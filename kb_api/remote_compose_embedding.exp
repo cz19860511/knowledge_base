@@ -1,0 +1,21 @@
+#!/usr/bin/expect -f
+
+set timeout -1
+if {$argc < 3} {
+    puts "Usage: remote_compose_embedding.exp <host> <user> <password>"
+    exit 1
+}
+
+set host [lindex $argv 0]
+set user [lindex $argv 1]
+set pass [lindex $argv 2]
+set cmd {cd /opt/kb-app/kb_api && docker compose -f docker-compose.ecs.yml --profile embedding up -d --build && docker compose -f docker-compose.ecs.yml --profile embedding ps}
+
+spawn ssh -o StrictHostKeyChecking=no $user@$host $cmd
+expect {
+    -re {(?i)password:} {
+        send "$pass\r"
+        exp_continue
+    }
+    eof
+}

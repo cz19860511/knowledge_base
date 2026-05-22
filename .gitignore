@@ -1,0 +1,63 @@
+# macOS / editor
+.DS_Store
+._*
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.venv_*/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+
+# Knowledge-base source data and generated artifacts
+raw/*
+staging/*
+working/*
+selected/*
+chunks/*
+vectors/*
+rag/*
+packages/*
+outputs/*
+models/*
+
+# Keep directory placeholders trackable if they are added later.
+!raw/.gitkeep
+!staging/.gitkeep
+!working/.gitkeep
+!selected/.gitkeep
+!chunks/.gitkeep
+!vectors/.gitkeep
+!rag/.gitkeep
+!packages/.gitkeep
+!outputs/.gitkeep
+!models/.gitkeep
+
+# Large or generated office artifacts should stay out of source control by default.
+~$*
+*.bak

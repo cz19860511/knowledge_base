@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set timeout -1
+
+if {$argc < 4} {
+    puts "Usage: deploy_to_ecs.exp <host> <user> <password> <project_root>"
+    exit 1
+}
+
+set host [lindex $argv 0]
+set user [lindex $argv 1]
+set pass [lindex $argv 2]
+set root [lindex $argv 3]
+
+proc login_cmd {cmd host user pass} {
+    spawn ssh -o StrictHostKeyChecking=no $user@$host $cmd
+    expect {
+        -re {(?i)password:} {
+            send "$pass\r"
+            exp_continue
+        }
+        eof
+    }
+}
+
+proc sync_dir {src dst host user pass} {
+    spawn rsync -avz \
+        --exclude "__pycache__/" \
+        --exclude ".DS_Store" \
+        --exclude ".env" \
+        --exclude "*.pyc" \
+        -e "ssh -o StrictHostKeyChecking=no" $src $user@$host:$dst
+    expect {
+        -re {(?i)password:} {
+            send "$pass\r"
+            exp_continue
+        }
+        eof
+    }
+}
+
+login_cmd "mkdir -p /opt/kb-app/kb_api /opt/kb-app/embedding_service /opt/kb-app/docs /data/kb/chunks /data/kb/vectors /data/kb/rag /data/kb/selected /data/kb/models" $host $user $pass
+
+sync_dir "$root/knowledge_base/kb_api/" "/opt/kb-app/kb_api/" $host $user $pass
+sync_dir "$root/knowledge_base/embedding_service/" "/opt/kb-app/embedding_service/" $host $user $pass
+sync_dir "$root/knowledge_base/requirements-kb-api.txt" "/opt/kb-app/" $host $user $pass
+sync_dir "$root/knowledge_base/requirements-embedding-service.txt" "/opt/kb-app/" $host $user $pass
+sync_dir "$root/knowledge_base/chunks/" "/data/kb/chunks/" $host $user $pass
+sync_dir "$root/knowledge_base/vectors/" "/data/kb/vectors/" $host $user $pass
+sync_dir "$root/knowledge_base/rag/" "/data/kb/rag/" $host $user $pass
+sync_dir "$root/knowledge_base/selected/" "/data/kb/selected/" $host $user $pass
+
+puts "Deployment sync done."

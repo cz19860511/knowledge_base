@@ -1,0 +1,48 @@
+services:
+  embedding-service:
+    build:
+      context: ..
+      dockerfile: embedding_service/Dockerfile
+    restart: unless-stopped
+    profiles:
+      - embedding
+    ports:
+      - "9100:9100"
+    environment:
+      KB_EMBEDDING_PROVIDER: transformers
+      KB_EMBEDDING_MODEL_PATH: /data/kb/models/bge-small-zh-v1.5
+      KB_EMBEDDING_MODEL_NAME: bge-small-zh-v1.5
+      KB_EMBEDDING_DEVICE: cpu
+      KB_EMBEDDING_BATCH_SIZE: 16
+    volumes:
+      - /data/kb/models:/data/kb/models:ro
+
+  kb-api:
+    build:
+      context: ..
+      dockerfile: kb_api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "9091:8080"
+    env_file:
+      - .env
+    environment:
+      KB_ROOT_DIR: /data/kb
+      KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
+    volumes:
+      - /data/kb/chunks:/data/kb/chunks:ro
+      - /data/kb/vectors:/data/kb/vectors:ro
+      - /data/kb/rag:/data/kb/rag:ro
+      - /data/kb/selected:/data/kb/selected:ro
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - kb-api
+    ports:
+      - "9090:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # 证书目录留给 ECS 后续挂载，启用 HTTPS 时再加：
+      # - /etc/ssl/kb/certs:/etc/nginx/certs:ro
