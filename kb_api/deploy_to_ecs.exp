@@ -39,10 +39,12 @@ proc sync_dir {src dst host user pass} {
     }
 }
 
-login_cmd "mkdir -p /opt/kb-app/kb_api /opt/kb-app/embedding_service /opt/kb-app/docs /data/kb/chunks /data/kb/vectors /data/kb/rag /data/kb/selected /data/kb/models" $host $user $pass
+login_cmd "mkdir -p /opt/kb-app/kb_api /opt/kb-app/embedding_service /opt/kb-app/docs /data/kb/chunks /data/kb/vectors /data/kb/rag /data/kb/selected /data/kb/models /data/kb/raw /data/kb/raw_versions /data/kb/operations" $host $user $pass
 
 sync_dir "$root/knowledge_base/kb_api/" "/opt/kb-app/kb_api/" $host $user $pass
 sync_dir "$root/knowledge_base/embedding_service/" "/opt/kb-app/embedding_service/" $host $user $pass
+sync_dir "$root/knowledge_base/scripts/" "/opt/kb-app/scripts/" $host $user $pass
+sync_dir "$root/knowledge_base/pipeline_config.py" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/requirements-kb-api.txt" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/requirements-embedding-service.txt" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/chunks/" "/data/kb/chunks/" $host $user $pass

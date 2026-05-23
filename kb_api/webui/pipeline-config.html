@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识平台 · 流程配置</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body data-page="config">
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Knowledge Platform</div>
+          <h1>流程配置中心</h1>
+          <p class="lead">把 MinerU 预处理、Chunk 切分和 Embedding 参数统一放在这里，保存后会写入 `operations/pipeline_config.json`。</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">返回首页</a>
+          <a class="ghost-link" href="/raw-files-ui">原始文件管理</a>
+          <a class="ghost-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        </div>
+      </header>
+
+      <main class="layout config-layout">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>配置状态</h2>
+              <p>输入 API Key 后加载当前配置，修改后点击保存即可写入共享配置文件。</p>
+            </div>
+            <span class="status-pill" id="config-pill">配置未加载</span>
+          </div>
+
+          <div class="form-grid config-auth-grid">
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" placeholder="输入 `KB_API_KEY`" autocomplete="off" />
+            </label>
+            <div class="field">
+              <span>配置文件</span>
+              <div class="config-meta" id="config-path">-</div>
+              <div class="mini-note" id="config-save-state">输入 API Key 后可加载</div>
+            </div>
+            <div class="field config-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="save-key">保存 Key</button>
+                <button class="ghost-btn" id="load-config">加载配置</button>
+                <button class="ghost-btn" id="refresh-config">刷新配置</button>
+                <button class="primary-btn" id="save-config">保存配置</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel config-panel">
+          <div class="panel-head">
+            <div>
+              <h2>MinerU 预处理</h2>
+              <p>这里控制当前批次要处理哪些目录，以及 MinerU 和 DOCX 补充解析的基础参数。</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field field-span-2">
+              <span>目录选择</span>
+              <div class="check-grid" id="preprocess-folders"></div>
+            </label>
+            <label class="field">
+              <span>主解析扩展名</span>
+              <input id="preprocess-primary-exts" type="text" placeholder=".pdf, .docx, .xlsx, .pptx" />
+            </label>
+            <label class="field">
+              <span>补充解析扩展名</span>
+              <input id="preprocess-supplement-exts" type="text" placeholder=".docx" />
+            </label>
+            <label class="field">
+              <span>MinerU 命令</span>
+              <input id="preprocess-mineru-command" type="text" placeholder="mineru" />
+            </label>
+            <label class="field">
+              <span>MinerU pipeline 名称</span>
+              <input id="preprocess-mineru-pipeline" type="text" placeholder="pipeline" />
+            </label>
+            <label class="field field-inline-check">
+              <span>DOCX 启用 MarkItDown 补充解析</span>
+              <input id="preprocess-markitdown-docx-enabled" type="checkbox" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel config-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Chunk 切分</h2>
+              <p>这里控制 chunk 的长度和解析器偏好，用于把预处理结果整理成可检索的切片。</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field field-span-2">
+              <span>目录选择</span>
+              <div class="check-grid" id="chunk-folders"></div>
+            </label>
+            <label class="field">
+              <span>最大 chunk 字数</span>
+              <input id="chunk-max-chars" type="number" min="200" step="50" />
+            </label>
+            <label class="field">
+              <span>最小 chunk 字数</span>
+              <input id="chunk-min-chars" type="number" min="50" step="50" />
+            </label>
+            <label class="field">
+              <span>MinerU 优先加分</span>
+              <input id="chunk-mineru-bonus" type="number" min="0" step="10" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel config-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Embedding</h2>
+              <p>这里控制中文 embedding 服务的模型与推理参数，保存后会用于后续检索和向量重建。</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Provider</span>
+              <input id="embedding-provider" type="text" placeholder="transformers" />
+            </label>
+            <label class="field">
+              <span>模型路径</span>
+              <input id="embedding-model-path" type="text" placeholder="/data/kb/models/bge-small-zh-v1.5" />
+            </label>
+            <label class="field">
+              <span>模型名称</span>
+              <input id="embedding-model-name" type="text" placeholder="bge-small-zh-v1.5" />
+            </label>
+            <label class="field">
+              <span>推理设备</span>
+              <input id="embedding-device" type="text" placeholder="cpu" />
+            </label>
+            <label class="field">
+              <span>Batch Size</span>
+              <input id="embedding-batch-size" type="number" min="1" step="1" />
+            </label>
+            <label class="field">
+              <span>Pooling</span>
+              <input id="embedding-pooling" type="text" placeholder="cls" />
+            </label>
+            <label class="field field-span-2">
+              <span>Query Instruction</span>
+              <textarea id="embedding-query-instruction" rows="3" placeholder="为这个句子生成表示以用于检索相关文章："></textarea>
+            </label>
+            <label class="field">
+              <span>Max Length</span>
+              <input id="embedding-max-length" type="number" min="32" step="32" />
+            </label>
+            <label class="field field-inline-check">
+              <span>Embedding 输出归一化</span>
+              <input id="embedding-normalize" type="checkbox" />
+            </label>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

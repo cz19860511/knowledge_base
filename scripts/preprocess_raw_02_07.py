@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterable
 
 from markitdown import MarkItDown
+from pipeline_config import DEFAULT_PIPELINE_CONFIG, load_pipeline_config
 
 
 ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
@@ -30,16 +31,18 @@ RAG_OUT = ROOT / "rag" / BATCH_ID
 PACKAGES_OUT = ROOT / "packages" / BATCH_ID
 OPS_OUT = ROOT / "operations"
 DOCS_OUT = ROOT / "docs"
-ALLOWED_FOLDERS = [
-    "02规章制度与标准规范",
-    "03SOP流程化资料_疑似",
-    "04表单台账与字段说明_疑似",
-    "05岗位职责与角色资料",
-    "06安全与应急资料",
-    "07信息系统与APP操作",
-]
-PRIMARY_EXTS = {".pdf", ".docx", ".xlsx", ".pptx"}
-SUPPLEMENT_EXTS = {".docx"}
+DEFAULT_PREPROCESS_CONFIG = DEFAULT_PIPELINE_CONFIG["preprocess"]
+ALLOWED_FOLDERS = list(DEFAULT_PREPROCESS_CONFIG["folders"])
+
+
+def load_preprocess_config() -> dict:
+    payload = load_pipeline_config(ROOT)
+    config = payload.get("preprocess", {})
+    if not isinstance(config, dict):
+        return dict(DEFAULT_PREPROCESS_CONFIG)
+    merged = dict(DEFAULT_PREPROCESS_CONFIG)
+    merged.update(config)
+    return merged
 
 
 @dataclass
@@ -80,18 +83,17 @@ def ensure_dirs() -> None:
         p.mkdir(parents=True, exist_ok=True)
 
 
-def link_staging() -> None:
+def link_staging(folders: list[str]) -> None:
     STAGING_ROOT.mkdir(parents=True, exist_ok=True)
-    for folder in ALLOWED_FOLDERS:
+    for folder in folders:
         src = RAW_ROOT / folder
         dst = STAGING_ROOT / folder
         if dst.exists() or dst.is_symlink():
             continue
         dst.symlink_to(src, target_is_directory=True)
 
-
-def iter_source_files() -> Iterable[Path]:
-    for folder in ALLOWED_FOLDERS:
+def iter_source_files(folders: list[str], allowed_exts: set[str]) -> Iterable[Path]:
+    for folder in folders:
         base = RAW_ROOT / folder
         if not base.exists():
             continue
@@ -100,7 +102,7 @@ def iter_source_files() -> Iterable[Path]:
                 continue
             if p.name.startswith(".") or p.name.startswith("~$"):
                 continue
-            if p.suffix.lower() in {".zip", ".csv", ".txt", ".md", ".xlsx", ".pdf", ".docx", ".pptx"}:
+            if p.suffix.lower() in allowed_exts:
                 yield p
 
 
@@ -109,7 +111,7 @@ def _safe_name(path: Path) -> str:
     return re.sub(r"[\\/:*?\"<>|]", "_", stem)
 
 
-def run_mineru_on_folder(folder: str) -> None:
+def run_mineru_on_folder(folder: str, mineru_command: str, mineru_pipeline: str) -> None:
     src = STAGING_ROOT / folder
     out = MINERU_OUT / folder
     out.mkdir(parents=True, exist_ok=True)
@@ -117,20 +119,22 @@ def run_mineru_on_folder(folder: str) -> None:
         # keep previous runs only if user reruns intentionally with a new batch id
         pass
     cmd = [
-        "mineru",
+        mineru_command,
         "-p",
         str(src),
         "-o",
         str(out),
         "-b",
-        "pipeline",
+        mineru_pipeline,
     ]
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
         print(f"[MinerU] folder failed but will continue: {folder} (returncode={result.returncode})")
 
 
-def run_markitdown_docx(files: list[Path]) -> dict[str, Path]:
+def run_markitdown_docx(files: list[Path], enabled: bool) -> dict[str, Path]:
+    if not enabled:
+        return {}
     md = MarkItDown()
     produced: dict[str, Path] = {}
     for src in files:
@@ -307,11 +311,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ensure_dirs()
-    link_staging()
+    config = load_preprocess_config()
+    folders = [f for f in (args.folders or config.get("folders", ALLOWED_FOLDERS)) if f in ALLOWED_FOLDERS]
+    primary_exts = {str(ext).lower() for ext in config.get("primary_exts", DEFAULT_PREPROCESS_CONFIG["primary_exts"])}
+    supplement_exts = {str(ext).lower() for ext in config.get("supplement_exts", DEFAULT_PREPROCESS_CONFIG["supplement_exts"])}
+    allowed_exts = {".zip", ".csv", ".txt", ".md"} | primary_exts | supplement_exts
+    mineru_command = str(config.get("mineru_command", DEFAULT_PREPROCESS_CONFIG["mineru_command"]))
+    mineru_pipeline = str(config.get("mineru_pipeline", DEFAULT_PREPROCESS_CONFIG["mineru_pipeline"]))
+    markitdown_enabled = bool(config.get("markitdown_docx_enabled", True))
 
-    folders = [f for f in (args.folders or ALLOWED_FOLDERS) if f in ALLOWED_FOLDERS]
-    all_files = list(iter_source_files())
+    ensure_dirs()
+    link_staging(folders)
+
+    all_files = list(iter_source_files(folders, allowed_exts))
     if args.folders:
         all_files = [p for p in all_files if p.parent.name in folders]
     print(f"source files: {len(all_files)}")
@@ -329,12 +341,12 @@ def main() -> None:
         if not by_folder.get(folder):
             continue
         print(f"[MinerU] {folder}: {len(by_folder[folder])} files")
-        run_mineru_on_folder(folder)
+        run_mineru_on_folder(folder, mineru_command=mineru_command, mineru_pipeline=mineru_pipeline)
 
     # 2) MarkItDown 补充 DOCX
-    docx_files = [p for p in all_files if p.suffix.lower() in SUPPLEMENT_EXTS]
+    docx_files = [p for p in all_files if p.suffix.lower() in supplement_exts]
     print(f"[MarkItDown] docx supplement: {len(docx_files)} files")
-    run_markitdown_docx(docx_files)
+    run_markitdown_docx(docx_files, enabled=markitdown_enabled)
 
     # 3) 解析结果汇总
     for folder in folders:

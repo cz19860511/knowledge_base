@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir \
     -r /app/requirements-embedding-service.txt
 
 COPY embedding_service /app/embedding_service
+COPY pipeline_config.py /app/pipeline_config.py
 
 ENV KB_EMBEDDING_PROVIDER=transformers \
     KB_EMBEDDING_MODEL_PATH=/data/kb/models/bge-small-zh-v1.5 \

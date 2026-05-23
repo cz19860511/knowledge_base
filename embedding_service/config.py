@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
+    root_dir: Path = Path(os.getenv("KB_ROOT_DIR", "/data/kb"))
     provider: str = os.getenv("KB_EMBEDDING_PROVIDER", "transformers")
     model_path: str = os.getenv("KB_EMBEDDING_MODEL_PATH", "/data/kb/models/bge-small-zh-v1.5")
     model_name: str = os.getenv("KB_EMBEDDING_MODEL_NAME", "bge-small-zh-v1.5")

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识平台 · 原始文件管理</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body data-page="raw">
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Knowledge Platform</div>
+          <h1>原始文件管理</h1>
+          <p class="lead">查看原始资料、上传文件、管理版本，支持回滚到上一版，并按当前目录手动触发预处理链路。</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">返回首页</a>
+          <a class="ghost-link" href="/pipeline-config-ui">流程配置</a>
+          <a class="ghost-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>访问与状态</h2>
+              <p>先输入 API Key，再加载原始文件列表和流水线状态。</p>
+            </div>
+            <span class="status-pill" id="pipeline-pill">流水线未加载</span>
+          </div>
+
+          <div class="form-grid raw-auth-grid">
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" placeholder="输入 `KB_API_KEY`" autocomplete="off" />
+            </label>
+            <div class="field raw-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="save-key">保存 Key</button>
+                <button class="ghost-btn" id="load-raw-files">加载原始文件</button>
+                <button class="ghost-btn" id="refresh-raw-files">刷新状态</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel raw-panel">
+          <div class="panel-head">
+            <div>
+              <h2>原始文件管理</h2>
+              <p>查看原始资料、批量上传、版本更新、删除文件，支持回滚上一版，并按当前目录手动触发后续步骤。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="raw-folder-count">-</span>
+            </div>
+          </div>
+
+          <div class="form-grid raw-form-grid">
+            <label class="field">
+              <span>目标目录</span>
+              <select id="raw-folder"></select>
+            </label>
+            <label class="field raw-file-field">
+              <span>批量文件</span>
+              <input id="raw-files" type="file" multiple />
+            </label>
+            <div class="field raw-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="upload-raw-files">上传并更新版本</button>
+                <button class="ghost-btn" id="run-preprocess">预处理</button>
+                <button class="ghost-btn" id="run-chunk">生成 Chunk</button>
+                <button class="ghost-btn" id="run-embedding">生成 Embedding</button>
+              </div>
+              <div class="mini-note">上传只更新原始文件和版本台账，后续处理需要手动点对应按钮。</div>
+            </div>
+          </div>
+
+          <div class="status-grid raw-status-grid" id="raw-status-grid">
+            <div class="metric">
+              <span class="metric-label">原始文件数</span>
+              <strong id="raw-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">流水线步骤</span>
+              <strong id="raw-step">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">最近成功</span>
+              <strong id="raw-success">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">当前目录</span>
+              <strong id="current-folder">-</strong>
+            </div>
+          </div>
+
+          <div class="table-wrap raw-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件</th>
+                  <th>版本</th>
+                  <th>上传时间</th>
+                  <th>大小</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="raw-table">
+                <tr>
+                  <td colspan="6" class="placeholder">先加载原始文件列表</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

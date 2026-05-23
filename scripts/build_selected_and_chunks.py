@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+from pipeline_config import DEFAULT_PIPELINE_CONFIG, load_pipeline_config
+
 
 ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
 WORKING_ROOT = ROOT / "working"
@@ -37,17 +39,18 @@ DOC_TYPE_MAP = {
     "07信息系统与APP操作": "系统操作",
 }
 
-FOLDER_ORDER = [
-    "02规章制度与标准规范",
-    "03SOP流程化资料_疑似",
-    "04表单台账与字段说明_疑似",
-    "05岗位职责与角色资料",
-    "06安全与应急资料",
-    "07信息系统与APP操作",
-]
+DEFAULT_CHUNK_CONFIG = DEFAULT_PIPELINE_CONFIG["chunk"]
+FOLDER_ORDER = list(DEFAULT_CHUNK_CONFIG["folders"])
 
-MAX_CHUNK_CHARS = 1800
-MIN_CHUNK_CHARS = 300
+
+def load_chunk_config() -> dict:
+    payload = load_pipeline_config(ROOT)
+    config = payload.get("chunk", {})
+    if not isinstance(config, dict):
+        return dict(DEFAULT_CHUNK_CONFIG)
+    merged = dict(DEFAULT_CHUNK_CONFIG)
+    merged.update(config)
+    return merged
 
 
 @dataclass
@@ -209,7 +212,7 @@ def find_markdown_candidates(src: Path) -> list[tuple[Path, str]]:
     return uniq
 
 
-def choose_best_markdown(src: Path) -> tuple[Path | None, str, int, int, int]:
+def choose_best_markdown(src: Path, parser_bonus: int) -> tuple[Path | None, str, int, int, int]:
     candidates = find_markdown_candidates(src)
     if not candidates:
         return None, "", 0, 0, 0
@@ -219,8 +222,8 @@ def choose_best_markdown(src: Path) -> tuple[Path | None, str, int, int, int]:
         text = normalize_text(read_text(path))
         score, char_count, heading_count, table_count = quality_score(text)
         # Prefer MinerU when scores are close; it is the primary parser in this batch.
-        parser_bonus = 50 if parser == "mineru" else 0
-        ranked.append((score + parser_bonus, char_count, heading_count, table_count, path, parser, text))
+        bonus = parser_bonus if parser == "mineru" else 0
+        ranked.append((score + bonus, char_count, heading_count, table_count, path, parser, text))
     ranked.sort(key=lambda x: (x[0], x[1], x[2], x[3]), reverse=True)
     best = ranked[0]
     return best[4], best[5], best[1], best[2], best[3]
@@ -310,7 +313,7 @@ def split_units(markdown: str) -> list[dict]:
     return units
 
 
-def build_chunks_from_text(markdown: str, max_chars: int = MAX_CHUNK_CHARS, min_chars: int = MIN_CHUNK_CHARS) -> list[dict]:
+def build_chunks_from_text(markdown: str, max_chars: int, min_chars: int) -> list[dict]:
     units = split_units(markdown)
     chunks: list[dict] = []
     current: list[dict] = []
@@ -477,6 +480,11 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
 
 
 def build_for_records(records: list[dict], target_folders: set[str] | None = None) -> tuple[list[SelectedDoc], list[ChunkRecord], list[dict]]:
+    chunk_config = load_chunk_config()
+    max_chunk_chars = int(chunk_config.get("max_chunk_chars", DEFAULT_CHUNK_CONFIG["max_chunk_chars"]))
+    min_chunk_chars = int(chunk_config.get("min_chunk_chars", DEFAULT_CHUNK_CONFIG["min_chunk_chars"]))
+    parser_bonus = int(chunk_config.get("mineru_parser_bonus", DEFAULT_CHUNK_CONFIG["mineru_parser_bonus"]))
+
     if target_folders is None:
         ensure_clean_outputs()
         ordered = sorted(records, key=lambda x: (FOLDER_ORDER.index(x["folder"]), x["file_name"]))
@@ -486,7 +494,7 @@ def build_for_records(records: list[dict], target_folders: set[str] | None = Non
         next_seq = 0
         for item in ordered:
             src = Path(item["source_path"])
-            best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src)
+            best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src, parser_bonus=parser_bonus)
             if best_md is None:
                 print(f"[skip] no markdown found: {src}")
                 continue
@@ -497,11 +505,11 @@ def build_for_records(records: list[dict], target_folders: set[str] | None = Non
             selected_rows.append(row)
 
             selected_text = normalize_text(read_text(best_md))
-            chunks = build_chunks_from_text(selected_text)
+            chunks = build_chunks_from_text(selected_text, max_chars=max_chunk_chars, min_chars=min_chunk_chars)
             if not chunks:
                 chunks = [
                     {
-                        "text": selected_text[:MAX_CHUNK_CHARS],
+                        "text": selected_text[:max_chunk_chars],
                         "section_path": "",
                         "section_path_end": "",
                         "page_start": None,
@@ -588,7 +596,7 @@ def build_for_records(records: list[dict], target_folders: set[str] | None = Non
 
     for item in ordered:
         src = Path(item["source_path"])
-        best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src)
+        best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src, parser_bonus=parser_bonus)
         if best_md is None:
             print(f"[skip] no markdown found: {src}")
             continue
@@ -604,11 +612,11 @@ def build_for_records(records: list[dict], target_folders: set[str] | None = Non
         rebuilt_selected.append(row)
 
         selected_text = normalize_text(read_text(best_md))
-        chunks = build_chunks_from_text(selected_text)
+        chunks = build_chunks_from_text(selected_text, max_chars=max_chunk_chars, min_chars=min_chunk_chars)
         if not chunks:
             chunks = [
                 {
-                    "text": selected_text[:MAX_CHUNK_CHARS],
+                    "text": selected_text[:max_chunk_chars],
                     "section_path": "",
                     "section_path_end": "",
                     "page_start": None,
@@ -798,7 +806,9 @@ def main() -> None:
     args = parser.parse_args()
 
     records = load_parse_summary()
-    target_folders = {folder for folder in (args.folders or []) if folder in FOLDER_ORDER}
+    chunk_config = load_chunk_config()
+    config_folders = [folder for folder in chunk_config.get("folders", FOLDER_ORDER) if folder in FOLDER_ORDER]
+    target_folders = {folder for folder in (args.folders or config_folders) if folder in FOLDER_ORDER}
     if target_folders:
         selected_rows, chunk_rows, preview_rows = build_for_records(records, target_folders=target_folders)
     else:

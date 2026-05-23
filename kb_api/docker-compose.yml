@@ -12,6 +12,8 @@ services:
       KB_EMBEDDING_MODEL_NAME: mock-zh-384
       KB_EMBEDDING_POOLING: cls
       KB_EMBEDDING_QUERY_INSTRUCTION: 为这个句子生成表示以用于检索相关文章：
+    volumes:
+      - ../operations:/data/kb/operations:ro
 
   kb-api:
     build:
@@ -27,7 +29,9 @@ services:
       KB_EMBEDDING_MODEL_NAME: mock-zh-384
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
-      - ../raw:/data/kb/raw:ro
+      - ../raw:/data/kb/raw
+      - ../raw_versions:/data/kb/raw_versions
+      - ../operations:/data/kb/operations
       - ../chunks:/data/kb/chunks:ro
       - ../vectors:/data/kb/vectors:ro
       - ../rag:/data/kb/rag:ro

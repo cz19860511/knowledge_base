@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir \
     -r /app/requirements-kb-api.txt
 
 COPY kb_api /app/kb_api
+COPY pipeline_config.py /app/pipeline_config.py
 
 ENV KB_ROOT_DIR=/data/kb \
     KB_BATCH_ID=batch_20260521 \

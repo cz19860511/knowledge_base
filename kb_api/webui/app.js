@@ -1,31 +1,62 @@
+const PAGE = document.body?.dataset?.page || "home";
+
 const state = {
   health: null,
   apiKey: localStorage.getItem("kb_api_key") || "",
   rawFolders: [],
   rawFiles: [],
   rawPipeline: null,
+  rawExpandedHistory: new Set(),
+  pipelineConfig: null,
 };
 
 const $ = (id) => document.getElementById(id);
 
+function el(id) {
+  return $(id);
+}
+
+function setText(id, value) {
+  const node = el(id);
+  if (node) {
+    node.textContent = value;
+  }
+}
+
+function setHtml(id, value) {
+  const node = el(id);
+  if (node) {
+    node.innerHTML = value;
+  }
+}
+
+function setDisabled(id, value) {
+  const node = el(id);
+  if (node) {
+    node.disabled = value;
+  }
+}
+
 function setHealthPill(status) {
-  const pill = $("health-pill");
+  const pill = el("health-pill");
+  if (!pill) {
+    return;
+  }
   pill.textContent = status;
   pill.classList.remove("ok", "warn");
   pill.classList.add(status === "ok" ? "ok" : "warn");
 }
 
 function renderHealth(data) {
-  $("kb-id").textContent = data.knowledge_base_id || "-";
-  $("batch-id").textContent = data.batch_id || "-";
-  $("retrieval-mode").textContent = data.retrieval_mode || "-";
-  $("embed-model").textContent = data.embedding_model || "bge-small-zh-v1.5";
+  setText("kb-id", data.knowledge_base_id || "-");
+  setText("batch-id", data.batch_id || "-");
+  setText("retrieval-mode", data.retrieval_mode || "-");
+  setText("embed-model", data.embedding_model || "bge-small-zh-v1.5");
   setHealthPill(data.status || "warn");
 }
 
 function formatScore(score) {
-  const value = Number(score || 0);
-  return value.toFixed(4);
+  return Number(score || 0).toFixed(4);
 }
 
 function escapeHtml(value) {
@@ -39,9 +70,7 @@ function escapeHtml(value) {
 
 function formatBytes(bytes) {
   const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) {
-    return "-";
-  }
+  if (!Number.isFinite(value) || value <= 0) return "-";
   const units = ["B", "KB", "MB", "GB"];
   let size = value;
   let unit = 0;
@@ -61,18 +90,51 @@ function formatTime(value) {
   }
 }
 
+function splitList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[,\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function joinList(value) {
+  return splitList(value).join(", ");
+}
+
+function setInputValue(id, value) {
+  const node = el(id);
+  if (node) {
+    node.value = value ?? "";
+  }
+}
+
+function setCheckboxValue(id, value) {
+  const node = el(id);
+  if (node) {
+    node.checked = Boolean(value);
+  }
+}
+
+function getCheckboxValue(id) {
+  const node = el(id);
+  return Boolean(node?.checked);
+}
+
 async function fetchJson(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
-
+  const res = await fetch(url, { ...options, headers });
   const text = await res.text();
+
   let payload;
   try {
     payload = text ? JSON.parse(text) : {};
@@ -81,15 +143,22 @@ async function fetchJson(url, options = {}) {
   }
 
   if (!res.ok) {
-    const message = payload?.detail || payload?.message || res.statusText;
-    throw new Error(message);
+    throw new Error(payload?.detail || payload?.message || res.statusText);
   }
-
   return payload;
 }
 
+function requireApiKey() {
+  if (!state.apiKey) {
+    alert("先输入 API Key 再操作。");
+    return false;
+  }
+  return true;
+}
+
 function renderKnowledgeBases(items) {
-  const body = $("kb-table");
+  const body = el("kb-table");
+  if (!body) return;
   if (!items.length) {
     body.innerHTML = '<tr><td colspan="4" class="placeholder">没有加载到知识库数据</td></tr>';
     return;
@@ -113,9 +182,14 @@ function renderKnowledgeBases(items) {
 }
 
 function renderResults(payload) {
-  $("raw-json").textContent = JSON.stringify(payload, null, 2);
+  const rawJson = el("raw-json");
+  if (rawJson) {
+    rawJson.textContent = JSON.stringify(payload, null, 2);
+  }
 
-  const list = $("result-list");
+  const list = el("result-list");
+  if (!list) return;
+
   const items = payload.search_result_list || [];
   if (!items.length) {
     list.innerHTML = '<div class="placeholder">没有命中结果。</div>';
@@ -124,12 +198,7 @@ function renderResults(payload) {
 
   list.innerHTML = items
     .map((item, index) => {
-      const chips = [
-        item.retrieval_mode,
-        ...(item.matched_rules || []),
-        item.doc_type,
-        item.folder,
-      ]
+      const chips = [item.retrieval_mode, ...(item.matched_rules || []), item.doc_type, item.folder]
         .filter(Boolean)
         .map((value) => `<span class="chip">${escapeHtml(String(value))}</span>`)
         .join("");
@@ -149,23 +218,28 @@ function renderResults(payload) {
 }
 
 function renderRawFolderOptions(folders) {
-  const select = $("raw-folder");
+  const select = el("raw-folder");
+  if (!select) return;
+
   const current = select.value || state.rawFolders[0] || "";
-  select.innerHTML = folders
-    .map((folder) => `<option value="${escapeHtml(folder)}">${escapeHtml(folder)}</option>`)
-    .join("");
+  select.innerHTML = folders.map((folder) => `<option value="${escapeHtml(folder)}">${escapeHtml(folder)}</option>`).join("");
   if (folders.includes(current)) {
     select.value = current;
   } else if (folders.length) {
     select.value = folders[0];
   }
+
   state.rawFolders = folders;
-  $("raw-folder-count").textContent = select.value || "-";
+  const selected = select.value || "-";
+  setText("raw-folder-count", selected);
+  setText("current-folder", selected);
 }
 
 function renderRawPipeline(pipeline) {
   state.rawPipeline = pipeline;
-  const pill = $("pipeline-pill");
+  const pill = el("pipeline-pill");
+  if (!pill) return;
+
   const stateText = pipeline?.state || "idle";
   pill.textContent = stateText;
   pill.classList.remove("ok", "warn");
@@ -177,16 +251,17 @@ function renderRawPipeline(pipeline) {
 
   const stage = pipeline?.current_stage || pipeline?.current_step || "-";
   const folder = pipeline?.current_folder || "-";
-  $("raw-step").textContent = folder && folder !== "-" ? `${stage} / ${folder}` : stage;
-  $("raw-success").textContent = formatTime(pipeline?.last_success_at || pipeline?.finished_at);
+  setText("raw-step", folder && folder !== "-" ? `${stage} / ${folder}` : stage);
+  setText("raw-success", formatTime(pipeline?.last_success_at || pipeline?.finished_at));
 }
 
 function renderRawFiles(payload) {
   state.rawFiles = payload.raw_file_list || [];
   renderRawFolderOptions(payload.allowed_folders || []);
-  $("raw-total").textContent = payload.total ?? state.rawFiles.length;
+  setText("raw-total", payload.total ?? state.rawFiles.length);
 
-  const body = $("raw-table");
+  const body = el("raw-table");
+  if (!body) return;
   if (!state.rawFiles.length) {
     body.innerHTML = '<tr><td colspan="6" class="placeholder">当前目录还没有原始文件</td></tr>';
     return;
@@ -194,10 +269,41 @@ function renderRawFiles(payload) {
 
   body.innerHTML = state.rawFiles
     .map((item) => {
+      const rawKey = item.raw_key || `${item.folder}/${item.file_name}`;
+      const isExpanded = state.rawExpandedHistory.has(rawKey);
       const history = (item.history || [])
         .slice(-2)
         .map((record) => `${record.version || "-"} @ ${formatTime(record.uploaded_at)}`)
         .join(" · ");
+      const historyRows = (item.history || [])
+        .slice()
+        .reverse()
+        .map((record, index) => {
+          const versionLabel = record.version || `v${index + 1}`;
+          const meta = [
+            record.uploaded_at ? `上传 ${formatTime(record.uploaded_at)}` : null,
+            record.size_bytes != null ? `大小 ${formatBytes(record.size_bytes)}` : null,
+            record.source_version ? `来自 ${record.source_version}` : null,
+            record.restored_from ? `回滚自 ${record.restored_from}` : null,
+            record.action ? `动作 ${record.action}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
+          return `
+            <li class="history-item">
+              <div class="history-item-top">
+                <strong>${escapeHtml(versionLabel)}</strong>
+                <span class="history-chip">${escapeHtml(meta || "-")}</span>
+              </div>
+              <div class="history-item-sub">
+                ${escapeHtml(record.checksum ? `checksum ${record.checksum}` : "checksum -")}
+                ${record.stored_path ? ` · ${escapeHtml(record.stored_path)}` : ""}
+              </div>
+            </li>
+          `;
+        })
+        .join("");
 
       return `
         <tr>
@@ -217,41 +323,147 @@ function renderRawFiles(payload) {
           <td>${item.deleted ? "已删除" : "正常"}</td>
           <td>
             <div class="file-actions">
-              <button
-                class="ghost-btn danger-btn"
-                data-delete-folder="${escapeHtml(item.folder)}"
-                data-delete-file="${escapeHtml(item.file_name)}"
-              >
-                删除
-              </button>
+              <button class="ghost-btn" data-toggle-history="${escapeHtml(rawKey)}">${isExpanded ? "收起历史" : "展开历史"}</button>
+              <button class="ghost-btn danger-btn" data-delete-folder="${escapeHtml(item.folder)}" data-delete-file="${escapeHtml(item.file_name)}">删除</button>
+              ${Number(item.version_count || 0) > 1 ? `<button class="ghost-btn" data-rollback-folder="${escapeHtml(item.folder)}" data-rollback-file="${escapeHtml(item.file_name)}">回滚上一版</button>` : ""}
             </div>
           </td>
         </tr>
+        ${isExpanded ? `
+        <tr class="history-row">
+          <td colspan="6">
+            <div class="history-panel">
+              <div class="history-panel-head">版本历史</div>
+              <ul class="history-list">
+                ${historyRows || '<li class="history-item"><div class="history-item-sub">暂无历史记录</div></li>'}
+              </ul>
+            </div>
+          </td>
+        </tr>` : ""}
       `;
     })
     .join("");
 }
 
 function renderRawEmpty(message) {
-  $("raw-table").innerHTML = `<tr><td colspan="6" class="placeholder">${escapeHtml(message)}</td></tr>`;
-  $("raw-total").textContent = "-";
-  $("raw-folder-count").textContent = "-";
-  $("raw-step").textContent = "-";
-  $("raw-success").textContent = "-";
-  const pill = $("pipeline-pill");
-  pill.textContent = "未加载";
-  pill.classList.remove("ok", "warn");
+  setHtml("raw-table", `<tr><td colspan="6" class="placeholder">${escapeHtml(message)}</td></tr>`);
+  setText("raw-total", "-");
+  setText("raw-folder-count", "-");
+  setText("current-folder", "-");
+  setText("raw-step", "-");
+  setText("raw-success", "-");
+  const pill = el("pipeline-pill");
+  if (pill) {
+    pill.textContent = "未加载";
+    pill.classList.remove("ok", "warn");
+  }
 }
 
-function requireApiKey() {
-  if (!state.apiKey) {
-    alert("先输入 API Key 再操作原始文件。");
-    return false;
+function renderPipelineConfig(config) {
+  state.pipelineConfig = config;
+  const pill = el("config-pill");
+  if (pill) {
+    pill.textContent = config?.updated_at ? "已加载" : "默认配置";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add("ok");
   }
-  return true;
+  const meta = config?.updated_at ? `已保存 ${formatTime(config.updated_at)}` : "未保存";
+  setText("config-save-state", meta);
+  setText("config-path", config?.config_path || "-");
+
+  const payload = config?.config || {};
+  const preprocess = payload.preprocess || {};
+  const chunk = payload.chunk || {};
+  const embedding = payload.embedding || {};
+
+  renderFolderCheckboxes("preprocess-folders", preprocess.folders || []);
+  renderFolderCheckboxes("chunk-folders", chunk.folders || []);
+  setInputValue("preprocess-primary-exts", joinList(preprocess.primary_exts || []));
+  setInputValue("preprocess-supplement-exts", joinList(preprocess.supplement_exts || []));
+  setCheckboxValue("preprocess-markitdown-docx-enabled", preprocess.markitdown_docx_enabled);
+  setInputValue("preprocess-mineru-command", preprocess.mineru_command || "");
+  setInputValue("preprocess-mineru-pipeline", preprocess.mineru_pipeline || "");
+
+  setInputValue("chunk-max-chars", chunk.max_chunk_chars ?? "");
+  setInputValue("chunk-min-chars", chunk.min_chunk_chars ?? "");
+  setInputValue("chunk-mineru-bonus", chunk.mineru_parser_bonus ?? "");
+
+  setInputValue("embedding-provider", embedding.provider || "");
+  setInputValue("embedding-model-path", embedding.model_path || "");
+  setInputValue("embedding-model-name", embedding.model_name || "");
+  setInputValue("embedding-device", embedding.device || "");
+  setInputValue("embedding-batch-size", embedding.batch_size ?? "");
+  setInputValue("embedding-pooling", embedding.pooling || "");
+  setInputValue("embedding-query-instruction", embedding.query_instruction || "");
+  setInputValue("embedding-max-length", embedding.max_length ?? "");
+  setCheckboxValue("embedding-normalize", embedding.normalize);
+}
+
+function renderFolderCheckboxes(containerId, folders) {
+  const container = el(containerId);
+  if (!container) return;
+  const selected = new Set((folders || []).map((item) => String(item)));
+  const options = state.rawFolders.length ? state.rawFolders : [
+    "02规章制度与标准规范",
+    "03SOP流程化资料_疑似",
+    "04表单台账与字段说明_疑似",
+    "05岗位职责与角色资料",
+    "06安全与应急资料",
+    "07信息系统与APP操作",
+  ];
+  container.innerHTML = options
+    .map((folder) => {
+      const checked = selected.has(folder) ? "checked" : "";
+      return `
+        <label class="check-pill">
+          <input type="checkbox" data-folder-choice="${escapeHtml(containerId)}" value="${escapeHtml(folder)}" ${checked} />
+          <span>${escapeHtml(folder)}</span>
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function collectFolderCheckboxes(containerId) {
+  const container = el(containerId);
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
+}
+
+function buildPipelineConfigPayload() {
+  return {
+    version: 1,
+    preprocess: {
+      folders: collectFolderCheckboxes("preprocess-folders"),
+      primary_exts: splitList(el("preprocess-primary-exts")?.value || ""),
+      supplement_exts: splitList(el("preprocess-supplement-exts")?.value || ""),
+      markitdown_docx_enabled: getCheckboxValue("preprocess-markitdown-docx-enabled"),
+      mineru_command: (el("preprocess-mineru-command")?.value || "").trim(),
+      mineru_pipeline: (el("preprocess-mineru-pipeline")?.value || "").trim(),
+    },
+    chunk: {
+      folders: collectFolderCheckboxes("chunk-folders"),
+      max_chunk_chars: Number(el("chunk-max-chars")?.value || 1800),
+      min_chunk_chars: Number(el("chunk-min-chars")?.value || 300),
+      mineru_parser_bonus: Number(el("chunk-mineru-bonus")?.value || 50),
+    },
+    embedding: {
+      provider: (el("embedding-provider")?.value || "").trim(),
+      model_path: (el("embedding-model-path")?.value || "").trim(),
+      model_name: (el("embedding-model-name")?.value || "").trim(),
+      device: (el("embedding-device")?.value || "").trim(),
+      batch_size: Number(el("embedding-batch-size")?.value || 16),
+      pooling: (el("embedding-pooling")?.value || "").trim(),
+      query_instruction: (el("embedding-query-instruction")?.value || "").trim(),
+      max_length: Number(el("embedding-max-length")?.value || 512),
+      normalize: getCheckboxValue("embedding-normalize"),
+    },
+  };
 }
 
 async function loadHealth() {
+  const pill = el("health-pill");
+  if (!pill) return;
   try {
     setHealthPill("检查中");
     const data = await fetchJson("/health");
@@ -259,23 +471,28 @@ async function loadHealth() {
     renderHealth(data);
   } catch (error) {
     setHealthPill("warn");
-    $("raw-json").textContent = JSON.stringify({ error: error.message }, null, 2);
+    const rawJson = el("raw-json");
+    if (rawJson) {
+      rawJson.textContent = JSON.stringify({ error: error.message }, null, 2);
+    }
   }
 }
 
 async function loadKnowledgeBases() {
-  if (!requireApiKey()) {
-    return;
-  }
+  if (!requireApiKey()) return;
+  const body = el("kb-table");
+  if (!body) return;
 
   const data = await fetchJson("/knowledge-bases", {
     headers: { Authorization: `Bearer ${state.apiKey}` },
   });
-
   renderKnowledgeBases(data.knowledge_base_list || []);
 }
 
 async function loadRawFiles(silent = false) {
+  const body = el("raw-table");
+  if (!body) return;
+
   if (!state.apiKey) {
     if (!silent) {
       alert("先输入 API Key 再加载原始文件。");
@@ -291,6 +508,9 @@ async function loadRawFiles(silent = false) {
 }
 
 async function loadRawPipelineStatus(silent = false) {
+  const pill = el("pipeline-pill");
+  if (!pill) return;
+
   if (!state.apiKey) {
     if (!silent) {
       alert("先输入 API Key 再查看流水线状态。");
@@ -305,17 +525,62 @@ async function loadRawPipelineStatus(silent = false) {
   renderRawPipeline(data);
 }
 
-async function runQuery() {
-  if (!requireApiKey()) {
+async function loadPipelineConfig(silent = false) {
+  const pill = el("config-pill");
+  if (!pill) return;
+
+  if (!state.apiKey) {
+    if (!silent) {
+      alert("先输入 API Key 再加载配置。");
+    }
+    pill.textContent = "未加载";
+    pill.classList.remove("ok", "warn");
+    setText("config-save-state", "未加载");
     return;
   }
 
+  const data = await fetchJson("/pipeline-config", {
+    headers: { Authorization: `Bearer ${state.apiKey}` },
+  });
+  renderPipelineConfig(data);
+}
+
+async function savePipelineConfig() {
+  if (!requireApiKey()) return;
+  const button = el("save-config");
+  if (!button) return;
+
+  const payload = buildPipelineConfigPayload();
+  button.disabled = true;
+  button.textContent = "保存中...";
+
+  try {
+    const data = await fetchJson("/pipeline-config", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+      body: JSON.stringify({ config: payload }),
+    });
+    renderPipelineConfig(data);
+    alert("配置已保存。");
+  } catch (error) {
+    alert(`保存失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存配置";
+  }
+}
+
+async function runQuery() {
+  if (!requireApiKey()) return;
+  const runQueryBtn = el("run-query");
+  if (!runQueryBtn) return;
+
   const payload = {
     knowledge_base_ids: [state.health?.knowledge_base_id || "ai_qna_standard_v1"],
-    query: $("query").value.trim(),
-    top_k: Number($("topk").value || 3),
-    limit: Number($("topk").value || 3),
-    search_threshold: Number($("threshold").value || 0),
+    query: (el("query")?.value || "").trim(),
+    top_k: Number(el("topk")?.value || 3),
+    limit: Number(el("topk")?.value || 3),
+    search_threshold: Number(el("threshold")?.value || 0),
   };
 
   if (!payload.query) {
@@ -323,8 +588,8 @@ async function runQuery() {
     return;
   }
 
-  $("run-query").disabled = true;
-  $("run-query").textContent = "检索中...";
+  runQueryBtn.disabled = true;
+  runQueryBtn.textContent = "检索中...";
 
   try {
     const data = await fetchJson("/knowledge-bases/retrieve", {
@@ -334,26 +599,31 @@ async function runQuery() {
     });
     renderResults(data);
   } catch (error) {
-    $("result-list").innerHTML = `<div class="placeholder">检索失败：${escapeHtml(error.message)}</div>`;
-    $("raw-json").textContent = JSON.stringify({ error: error.message }, null, 2);
+    const list = el("result-list");
+    if (list) {
+      list.innerHTML = `<div class="placeholder">检索失败：${escapeHtml(error.message)}</div>`;
+    }
+    const rawJson = el("raw-json");
+    if (rawJson) {
+      rawJson.textContent = JSON.stringify({ error: error.message }, null, 2);
+    }
   } finally {
-    $("run-query").disabled = false;
-    $("run-query").textContent = "执行检索";
+    runQueryBtn.disabled = false;
+    runQueryBtn.textContent = "执行检索";
   }
 }
 
 async function uploadRawFiles() {
-  if (!requireApiKey()) {
+  if (!requireApiKey()) return;
+
+  const folder = el("raw-folder")?.value;
+  const fileInput = el("raw-files");
+  const uploadBtn = el("upload-raw-files");
+  if (!folder || !fileInput || !uploadBtn) {
     return;
   }
 
-  const folder = $("raw-folder").value;
-  const fileInput = $("raw-files");
   const files = Array.from(fileInput.files || []);
-  if (!folder) {
-    alert("先选择目标目录。");
-    return;
-  }
   if (!files.length) {
     alert("先选择要上传的文件。");
     return;
@@ -363,8 +633,8 @@ async function uploadRawFiles() {
   form.append("folder", folder);
   files.forEach((file) => form.append("files", file));
 
-  $("upload-raw-files").disabled = true;
-  $("upload-raw-files").textContent = "上传中...";
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = "上传中...";
 
   try {
     const result = await fetchJson("/raw-files/upload", {
@@ -378,19 +648,15 @@ async function uploadRawFiles() {
   } catch (error) {
     alert(`上传失败：${error.message}`);
   } finally {
-    $("upload-raw-files").disabled = false;
-    $("upload-raw-files").textContent = "上传并更新版本";
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = "上传并更新版本";
   }
 }
 
 async function deleteRawFile(folder, fileName) {
-  if (!requireApiKey()) {
-    return;
-  }
+  if (!requireApiKey()) return;
   const ok = confirm(`确认删除 ${folder}/${fileName} 吗？`);
-  if (!ok) {
-    return;
-  }
+  if (!ok) return;
 
   try {
     const result = await fetchJson(`/raw-files?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(fileName)}`, {
@@ -404,17 +670,35 @@ async function deleteRawFile(folder, fileName) {
   }
 }
 
-async function runRawStage(stage, buttonId, runningText) {
-  if (!requireApiKey()) {
-    return;
-  }
+async function rollbackRawFile(folder, fileName) {
+  if (!requireApiKey()) return;
+  const ok = confirm(`确认把 ${folder}/${fileName} 回滚到上一版吗？`);
+  if (!ok) return;
 
-  const folder = $("raw-folder").value;
+  try {
+    const result = await fetchJson(`/raw-files/rollback?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(fileName)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    await loadRawFiles(true);
+    await loadRawPipelineStatus(true);
+    alert(`回滚完成，已恢复 ${result.restored_from_version || "上一版"}。`);
+  } catch (error) {
+    alert(`回滚失败：${error.message}`);
+  }
+}
+
+async function runRawStage(stage, buttonId, runningText) {
+  if (!requireApiKey()) return;
+  const folder = el("raw-folder")?.value;
   if (!folder) {
     alert("先选择一个原始目录。");
     return;
   }
-  const button = $(buttonId);
+
+  const button = el(buttonId);
+  if (!button) return;
+
   button.disabled = true;
   button.textContent = runningText;
 
@@ -432,54 +716,134 @@ async function runRawStage(stage, buttonId, runningText) {
   }
 }
 
-function bindEvents() {
-  $("refresh-health").addEventListener("click", loadHealth);
-  $("load-kbs").addEventListener("click", loadKnowledgeBases);
-  $("run-query").addEventListener("click", runQuery);
-  $("upload-raw-files").addEventListener("click", uploadRawFiles);
-  $("refresh-raw-files").addEventListener("click", async () => {
-    await loadRawFiles();
-    await loadRawPipelineStatus(true);
-  });
-  $("run-preprocess").addEventListener("click", () => runRawStage("preprocess", "run-preprocess", "预处理"));
-  $("run-chunk").addEventListener("click", () => runRawStage("chunk", "run-chunk", "生成 Chunk"));
-  $("run-embedding").addEventListener("click", () => runRawStage("embedding", "run-embedding", "生成 Embedding"));
-  $("save-key").addEventListener("click", async () => {
-    state.apiKey = $("api-key").value.trim();
+function bindHomeEvents() {
+  el("refresh-health")?.addEventListener("click", loadHealth);
+  el("load-kbs")?.addEventListener("click", loadKnowledgeBases);
+  el("run-query")?.addEventListener("click", runQuery);
+  el("save-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
     localStorage.setItem("kb_api_key", state.apiKey);
     alert("API Key 已保存到本地浏览器。");
     try {
-      await loadRawFiles(true);
-      await loadRawPipelineStatus(true);
       await loadKnowledgeBases();
     } catch (error) {
       alert(`加载数据失败：${error.message}`);
     }
   });
-  $("clear-key").addEventListener("click", () => {
+  el("clear-key")?.addEventListener("click", () => {
     state.apiKey = "";
     localStorage.removeItem("kb_api_key");
-    $("api-key").value = "";
+    const apiKeyInput = el("api-key");
+    if (apiKeyInput) {
+      apiKeyInput.value = "";
+    }
     alert("API Key 已清除。");
-    renderRawEmpty("输入 API Key 后即可加载原始文件列表");
+    const list = el("result-list");
+    if (list) {
+      list.innerHTML = '<div class="placeholder">执行一次检索后，结果会显示在这里。</div>';
+    }
   });
-  $("raw-table").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-delete-folder]");
-    if (!button) {
+}
+
+function bindRawEvents() {
+  el("save-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
+    localStorage.setItem("kb_api_key", state.apiKey);
+    alert("API Key 已保存到本地浏览器。");
+    try {
+      await loadRawFiles(true);
+      await loadRawPipelineStatus(true);
+    } catch (error) {
+      alert(`加载数据失败：${error.message}`);
+    }
+  });
+  el("load-raw-files")?.addEventListener("click", async () => {
+    await loadRawFiles();
+  });
+  el("refresh-raw-files")?.addEventListener("click", async () => {
+    await loadRawFiles(true);
+    await loadRawPipelineStatus(true);
+  });
+  el("upload-raw-files")?.addEventListener("click", uploadRawFiles);
+  el("run-preprocess")?.addEventListener("click", () => runRawStage("preprocess", "run-preprocess", "预处理"));
+  el("run-chunk")?.addEventListener("click", () => runRawStage("chunk", "run-chunk", "生成 Chunk"));
+  el("run-embedding")?.addEventListener("click", () => runRawStage("embedding", "run-embedding", "生成 Embedding"));
+  el("raw-table")?.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-toggle-history]");
+    if (toggle) {
+      const key = toggle.getAttribute("data-toggle-history") || "";
+      if (state.rawExpandedHistory.has(key)) {
+        state.rawExpandedHistory.delete(key);
+      } else {
+        state.rawExpandedHistory.add(key);
+      }
+      renderRawFiles({ total: state.rawFiles.length, allowed_folders: state.rawFolders, raw_file_list: state.rawFiles });
       return;
     }
+    const button = event.target.closest("[data-delete-folder]");
+    if (!button) return;
     const folder = button.getAttribute("data-delete-folder") || "";
     const fileName = button.getAttribute("data-delete-file") || "";
     deleteRawFile(folder, fileName);
   });
+  el("raw-table")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-rollback-folder]");
+    if (!button) return;
+    const folder = button.getAttribute("data-rollback-folder") || "";
+    const fileName = button.getAttribute("data-rollback-file") || "";
+    rollbackRawFile(folder, fileName);
+  });
+}
+
+function bindConfigEvents() {
+  el("save-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
+    localStorage.setItem("kb_api_key", state.apiKey);
+    alert("API Key 已保存到本地浏览器。");
+    try {
+      await loadPipelineConfig(true);
+    } catch (error) {
+      alert(`加载配置失败：${error.message}`);
+    }
+  });
+  el("load-config")?.addEventListener("click", async () => {
+    await loadPipelineConfig();
+  });
+  el("refresh-config")?.addEventListener("click", async () => {
+    await loadPipelineConfig(true);
+  });
+  el("save-config")?.addEventListener("click", savePipelineConfig);
 }
 
 async function bootstrap() {
-  $("api-key").value = state.apiKey;
-  bindEvents();
+  const apiKeyInput = el("api-key");
+  if (apiKeyInput) {
+    apiKeyInput.value = state.apiKey;
+  }
+
+  if (PAGE === "raw") {
+    bindRawEvents();
+    await loadRawFiles(true);
+    await loadRawPipelineStatus(true);
+    return;
+  }
+
+  if (PAGE === "config") {
+    bindConfigEvents();
+    if (state.apiKey) {
+      try {
+        await loadPipelineConfig(true);
+      } catch {
+        setText("config-save-state", "加载失败");
+      }
+    } else {
+      setText("config-save-state", "输入 API Key 后可加载");
+    }
+    return;
+  }
+
+  bindHomeEvents();
   await loadHealth();
-  await loadRawFiles(true);
-  await loadRawPipelineStatus(true);
 }
 
 bootstrap();

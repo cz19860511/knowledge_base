@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import threading
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -124,11 +125,115 @@ def _checksum(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _version_archive_path(folder: str, file_name: str, version: str) -> Path:
+    return settings.raw_versions_root / folder / _sanitize_file_name(file_name) / version / _sanitize_file_name(file_name)
+
+
 def _entry_history(entry: dict) -> list[dict]:
     history = entry.get("history")
     if isinstance(history, list):
         return [item for item in history if isinstance(item, dict)]
     return []
+
+
+def _bootstrap_entry_from_existing_file(folder: str, file_name: str, target: Path) -> dict:
+    manifest = _load_manifest()
+    files = manifest.setdefault("files", {})
+    rel_key = _manifest_key(folder, file_name)
+    existing_bytes = target.read_bytes()
+    existing_size = len(existing_bytes)
+    existing_checksum = _checksum(existing_bytes)
+    existing_uploaded_at = _iso_from_timestamp(target.stat().st_mtime)
+    entry = {
+        "raw_key": rel_key,
+        "relative_path": rel_key,
+        "folder": folder,
+        "file_name": file_name,
+        "history": [
+            {
+                "version": "v1",
+                "uploaded_at": existing_uploaded_at,
+                "size_bytes": existing_size,
+                "checksum": existing_checksum,
+                "stored_path": str(target),
+            }
+        ],
+        "current_version": "v1",
+        "current_uploaded_at": existing_uploaded_at,
+        "current_size_bytes": existing_size,
+        "current_checksum": existing_checksum,
+        "updated_at": existing_uploaded_at,
+        "deleted_at": None,
+    }
+    files[rel_key] = entry
+    _save_manifest(manifest)
+    return entry
+
+
+def _archive_current_version(folder: str, file_name: str, target: Path, entry: dict) -> dict:
+    history = _entry_history(entry)
+    if not history or not target.exists():
+        return entry
+
+    current = history[-1]
+    current_version = str(current.get("version", "v1"))
+    archive_path = _version_archive_path(folder, file_name, current_version)
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(target, archive_path)
+    current["stored_path"] = str(archive_path)
+    current["archived_at"] = _now_iso()
+    entry["history"] = history
+    return entry
+
+
+def _record_version(
+    folder: str,
+    file_name: str,
+    target: Path,
+    data: bytes,
+    entry: dict,
+    *,
+    source_version: str | None,
+    restored_from: str | None = None,
+    action: str = "upload",
+) -> dict:
+    target.write_bytes(data)
+    history = _entry_history(entry)
+    version = f"v{len(history) + 1}"
+    uploaded_at = _now_iso()
+    checksum = _checksum(data)
+    history.append(
+        {
+            "version": version,
+            "uploaded_at": uploaded_at,
+            "size_bytes": len(data),
+            "checksum": checksum,
+            "stored_path": str(target),
+            "source_version": source_version,
+            "restored_from": restored_from,
+            "action": action,
+        }
+    )
+    entry.update(
+        {
+            "raw_key": _manifest_key(folder, file_name),
+            "relative_path": _manifest_key(folder, file_name),
+            "folder": folder,
+            "file_name": file_name,
+            "history": history,
+            "current_version": version,
+            "current_uploaded_at": uploaded_at,
+            "current_size_bytes": len(data),
+            "current_checksum": checksum,
+            "updated_at": uploaded_at,
+            "deleted_at": None,
+        }
+    )
+    manifest = _load_manifest()
+    files = manifest.setdefault("files", {})
+    files[_manifest_key(folder, file_name)] = entry
+    _save_manifest(manifest)
+    return entry
 
 
 def _build_item(path: Path, entry: dict | None) -> dict:
@@ -288,42 +393,39 @@ def save_uploaded_files(folder: str, uploads: list[UploadFile]) -> dict:
         file_name = _sanitize_file_name(upload.filename or "unnamed")
         target = target_dir / file_name
         existed = target.exists()
+        manifest = _load_manifest()
+        files = manifest.setdefault("files", {})
+        rel_key = _manifest_key(folder, file_name)
+        entry = files.get(rel_key)
+        if existed and (not entry or not _entry_history(entry)):
+            entry = _bootstrap_entry_from_existing_file(folder, file_name, target)
+        elif entry is None and existed:
+            entry = _bootstrap_entry_from_existing_file(folder, file_name, target)
+        elif entry is None:
+            entry = {
+                "raw_key": rel_key,
+                "relative_path": rel_key,
+                "folder": folder,
+                "file_name": file_name,
+                "history": [],
+            }
         if existed:
-            manifest = _load_manifest()
-            files = manifest.setdefault("files", {})
-            rel_key = _manifest_key(folder, file_name)
-            if rel_key not in files:
-                existing_bytes = target.read_bytes()
-                existing_size = len(existing_bytes)
-                existing_checksum = _checksum(existing_bytes)
-                existing_uploaded_at = _iso_from_timestamp(target.stat().st_mtime)
-                files[rel_key] = {
-                    "raw_key": rel_key,
-                    "relative_path": rel_key,
-                    "folder": folder,
-                    "file_name": file_name,
-                    "history": [
-                        {
-                            "version": "v1",
-                            "uploaded_at": existing_uploaded_at,
-                            "size_bytes": existing_size,
-                            "checksum": existing_checksum,
-                        }
-                    ],
-                    "current_version": "v1",
-                    "current_uploaded_at": existing_uploaded_at,
-                    "current_size_bytes": existing_size,
-                    "current_checksum": existing_checksum,
-                    "updated_at": existing_uploaded_at,
-                    "deleted_at": None,
-                }
-                _save_manifest(manifest)
+            entry = _archive_current_version(folder, file_name, target, entry)
         payload = upload.file.read()
         if hasattr(payload, "__await__"):
             raise TypeError("async file payload is not supported in sync helper")
         data = payload or b""
-        target.write_bytes(data)
-        entry = _update_manifest_for_upload(folder, file_name, len(data), _checksum(data))
+        previous_version = str(entry.get("current_version", "v1")) if existed else None
+        entry = _record_version(
+            folder,
+            file_name,
+            target,
+            data,
+            entry,
+            source_version=previous_version,
+            restored_from=None,
+            action="upload",
+        )
         results.append(
             {
                 "action": "updated" if existed else "created",
@@ -340,6 +442,54 @@ def save_uploaded_files(folder: str, uploads: list[UploadFile]) -> dict:
         "created_count": created_count,
         "updated_count": updated_count,
         "items": [item["item"] for item in results],
+    }
+
+
+def rollback_raw_file(folder: str, file_name: str, version: str | None = None) -> dict:
+    _validate_folder(folder)
+    file_name = _sanitize_file_name(file_name)
+    target = settings.raw_source_root / folder / file_name
+    manifest = _load_manifest()
+    files = manifest.setdefault("files", {})
+    rel_key = _manifest_key(folder, file_name)
+    entry = files.get(rel_key)
+    if not entry:
+        raise FileNotFoundError(f"raw file manifest not found: {rel_key}")
+
+    history = _entry_history(entry)
+    if len(history) < 2:
+        raise ValueError("没有可回滚的历史版本")
+
+    if version:
+        target_record = next((item for item in history if str(item.get("version")) == version), None)
+        if target_record is None:
+            raise ValueError(f"未找到版本: {version}")
+    else:
+        target_record = history[-2]
+
+    source_path = Path(target_record.get("stored_path") or _version_archive_path(folder, file_name, str(target_record.get("version", ""))))
+    if not source_path.exists():
+        raise FileNotFoundError(f"回滚文件不存在: {source_path}")
+
+    if target.exists():
+        entry = _archive_current_version(folder, file_name, target, entry)
+
+    data = source_path.read_bytes()
+    restored_from = str(entry.get("current_version", ""))
+    entry = _record_version(
+        folder,
+        file_name,
+        target,
+        data,
+        entry,
+        source_version=str(target_record.get("version", "")),
+        restored_from=restored_from,
+        action="rollback",
+    )
+    return {
+        "restored": True,
+        "restored_from_version": str(target_record.get("version", "")),
+        "item": _build_item(target, entry),
     }
 
 

@@ -42,6 +42,10 @@ class Settings:
         return self.operations_dir / "raw_manifest.json"
 
     @property
+    def raw_versions_root(self) -> Path:
+        return self.root_dir / "raw_versions"
+
+    @property
     def raw_pipeline_status_path(self) -> Path:
         return self.operations_dir / "raw_pipeline_status.json"
 

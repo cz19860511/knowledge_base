@@ -218,7 +218,8 @@ td {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -229,13 +230,24 @@ td {
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: rgba(15, 118, 110, 0.55);
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
+.field textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
 .raw-form-grid {
   grid-template-columns: 1fr 1.4fr 1.4fr 1.2fr;
+  margin-bottom: 14px;
+}
+
+.raw-auth-grid {
+  grid-template-columns: 1.4fr 2fr;
   margin-bottom: 14px;
 }
 
@@ -270,6 +282,73 @@ td {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.history-row td {
+  padding-top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.history-panel {
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(243, 239, 232, 0.55);
+  padding: 14px 16px;
+}
+
+.history-panel-head {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.history-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.history-item-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.history-item-top strong {
+  font-size: 14px;
+}
+
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.15);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.history-item-sub {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .danger-btn {
@@ -407,6 +486,63 @@ button,
   background: rgba(255, 255, 255, 0.48);
 }
 
+.config-layout {
+  grid-template-columns: 1fr;
+}
+
+.config-panel .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-span-2 {
+  grid-column: span 2;
+}
+
+.field-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.field-inline-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.config-meta {
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.check-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.check-pill input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 @media (max-width: 1120px) {
   .status-grid,
   .form-grid,
@@ -420,6 +556,18 @@ button,
 
   .raw-form-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .raw-auth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-panel .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-span-2 {
+    grid-column: span 1;
   }
 
   .result-shell {
@@ -445,6 +593,14 @@ button,
 
   .raw-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .raw-auth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-span-2 {
+    grid-column: span 1;
   }
 
   .topbar-actions,

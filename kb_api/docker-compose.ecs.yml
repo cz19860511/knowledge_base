@@ -18,6 +18,7 @@ services:
       KB_EMBEDDING_QUERY_INSTRUCTION: 为这个句子生成表示以用于检索相关文章：
     volumes:
       - /data/kb/models:/data/kb/models:ro
+      - /data/kb/operations:/data/kb/operations:ro
 
   kb-api:
     build:
@@ -33,7 +34,9 @@ services:
       KB_EMBEDDING_MODEL_NAME: bge-small-zh-v1.5
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
-      - /data/kb/raw:/data/kb/raw:ro
+      - /data/kb/raw:/data/kb/raw
+      - /data/kb/raw_versions:/data/kb/raw_versions
+      - /data/kb/operations:/data/kb/operations
       - /data/kb/chunks:/data/kb/chunks:ro
       - /data/kb/vectors:/data/kb/vectors:ro
       - /data/kb/rag:/data/kb/rag:ro

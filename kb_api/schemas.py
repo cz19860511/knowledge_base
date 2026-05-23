@@ -64,6 +64,9 @@ class RawFileVersion(BaseModel):
     uploaded_at: str
     size_bytes: int = 0
     checksum: str | None = None
+    stored_path: str | None = None
+    source_version: str | None = None
+    restored_from: str | None = None
 
 
 class RawFileItem(BaseModel):
@@ -108,6 +111,12 @@ class RawDeleteResponse(BaseModel):
     item: RawFileItem
 
 
+class RawRollbackResponse(BaseModel):
+    restored: bool
+    restored_from_version: str
+    item: RawFileItem
+
+
 class RawPipelineStatus(BaseModel):
     running: bool = False
     state: str = "idle"
@@ -127,3 +136,13 @@ class RawPipelineStatus(BaseModel):
 class RawPipelineResponse(BaseModel):
     started: bool = False
     status: RawPipelineStatus
+
+
+class PipelineConfigResponse(BaseModel):
+    config_path: str
+    config: dict
+    updated_at: str = ""
+
+
+class PipelineConfigUpdateRequest(BaseModel):
+    config: dict

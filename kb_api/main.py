@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .rag import load_chunks, search
-from .raw_store import delete_raw_file, get_pipeline_status, list_raw_files, save_uploaded_files, start_pipeline
+from .raw_store import delete_raw_file, get_pipeline_status, list_raw_files, rollback_raw_file, save_uploaded_files, start_pipeline
 from .schemas import (
     KnowledgeBaseItem,
     KnowledgeBaseListResponse,
@@ -17,9 +17,13 @@ from .schemas import (
     RawPipelineResponse,
     RawPipelineStatus,
     RawUploadResponse,
+    RawRollbackResponse,
+    PipelineConfigResponse,
+    PipelineConfigUpdateRequest,
     RetrieveRequest,
     RetrieveResponse,
 )
+from pipeline_config import get_pipeline_config_path, load_pipeline_config, save_pipeline_config
 
 
 app = FastAPI(title="kb-api", version="0.1.0")
@@ -41,12 +45,13 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
 
 @app.get("/health")
 def health() -> dict:
+    pipeline_config = load_pipeline_config(settings.root_dir)
     return {
         "status": "ok",
         "knowledge_base_id": settings.knowledge_base_id,
         "batch_id": settings.batch_id,
         "retrieval_mode": settings.retrieval_mode,
-        "embedding_model": settings.embedding_model_name,
+        "embedding_model": pipeline_config.get("embedding", {}).get("model_name", settings.embedding_model_name),
     }
 
 
@@ -54,6 +59,17 @@ def health() -> dict:
 @app.get("/ui", include_in_schema=False)
 def webui() -> FileResponse:
     return FileResponse(WEBUI_DIR / "index.html")
+
+
+@app.get("/raw-files-ui", include_in_schema=False)
+@app.get("/raw-ui", include_in_schema=False)
+def raw_webui() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "raw-files.html")
+
+
+@app.get("/pipeline-config-ui", include_in_schema=False)
+def pipeline_config_webui() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "pipeline-config.html")
 
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse, dependencies=[Depends(require_api_key)])
@@ -129,6 +145,16 @@ def remove_raw_file(
     return RawDeleteResponse(**payload)
 
 
+@app.post("/raw-files/rollback", response_model=RawRollbackResponse, dependencies=[Depends(require_api_key)])
+def rollback_raw_file_api(
+    folder: str = Query(...),
+    file_name: str = Query(...),
+    version: str | None = Query(default=None),
+) -> RawRollbackResponse:
+    payload = rollback_raw_file(folder=folder, file_name=file_name, version=version)
+    return RawRollbackResponse(**payload)
+
+
 @app.get("/raw-files/pipeline", response_model=RawPipelineStatus, dependencies=[Depends(require_api_key)])
 def raw_pipeline_status() -> RawPipelineStatus:
     return RawPipelineStatus(**get_pipeline_status())
@@ -146,6 +172,26 @@ def trigger_raw_pipeline(
     trigger_reason = f"{stage}:{folder or 'all'}"
     started_status = start_pipeline(stage=stage, folder=folder, trigger_reason=trigger_reason, force=force)
     return RawPipelineResponse(started=bool(started_status.get("running")), status=RawPipelineStatus(**started_status))
+
+
+@app.get("/pipeline-config", response_model=PipelineConfigResponse, dependencies=[Depends(require_api_key)])
+def read_pipeline_config() -> PipelineConfigResponse:
+    config = load_pipeline_config(settings.root_dir)
+    return PipelineConfigResponse(
+        config_path=str(get_pipeline_config_path(settings.root_dir)),
+        config=config,
+        updated_at=str(config.get("updated_at", "")),
+    )
+
+
+@app.put("/pipeline-config", response_model=PipelineConfigResponse, dependencies=[Depends(require_api_key)])
+def update_pipeline_config(req: PipelineConfigUpdateRequest) -> PipelineConfigResponse:
+    config = save_pipeline_config(settings.root_dir, req.config)
+    return PipelineConfigResponse(
+        config_path=str(get_pipeline_config_path(settings.root_dir)),
+        config=config,
+        updated_at=str(config.get("updated_at", "")),
+    )
 
 
 if __name__ == "__main__":
