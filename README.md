@@ -52,6 +52,8 @@ pip install -r requirements-embedding-service.txt
 4. 构建 hybrid 索引，生成 `vectors/`。
 5. 启动 `kb-api`，供 AgentArts 调用。
 
+`kb-api` 读取原始文件列表时，需要把 `raw/` 挂载到容器内的 `/data/kb/raw`。
+
 常用命令：
 
 ```bash

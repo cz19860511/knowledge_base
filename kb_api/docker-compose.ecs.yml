@@ -33,6 +33,7 @@ services:
       KB_EMBEDDING_MODEL_NAME: bge-small-zh-v1.5
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
+      - /data/kb/raw:/data/kb/raw:ro
       - /data/kb/chunks:/data/kb/chunks:ro
       - /data/kb/vectors:/data/kb/vectors:ro
       - /data/kb/rag:/data/kb/rag:ro

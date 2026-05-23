@@ -27,6 +27,7 @@ services:
       KB_EMBEDDING_MODEL_NAME: mock-zh-384
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
+      - ../raw:/data/kb/raw:ro
       - ../chunks:/data/kb/chunks:ro
       - ../vectors:/data/kb/vectors:ro
       - ../rag:/data/kb/rag:ro
