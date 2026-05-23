@@ -43,6 +43,8 @@ class RetrieveHit(BaseModel):
     score: float
     keyword_score: float | None = None
     embedding_score: float | None = None
+    rule_score: float | None = None
+    matched_rules: list[str] | None = None
     retrieval_mode: str | None = None
     doc_type: str | None = None
     folder: str | None = None

@@ -13,6 +13,8 @@ class Settings:
     max_length: int = int(os.getenv("KB_EMBEDDING_MAX_LENGTH", "512"))
     batch_size: int = int(os.getenv("KB_EMBEDDING_BATCH_SIZE", "16"))
     normalize: bool = os.getenv("KB_EMBEDDING_NORMALIZE", "true").lower() in {"1", "true", "yes"}
+    pooling: str = os.getenv("KB_EMBEDDING_POOLING", "cls")
+    query_instruction: str = os.getenv("KB_EMBEDDING_QUERY_INSTRUCTION", "为这个句子生成表示以用于检索相关文章：")
     host: str = os.getenv("KB_EMBEDDING_HOST", "0.0.0.0")
     port: int = int(os.getenv("KB_EMBEDDING_PORT", "9100"))
 

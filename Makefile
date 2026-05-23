@@ -1,4 +1,4 @@
-PYTHON ?= python
+PYTHON ?= python3
 KB_ROOT_DIR ?= $(CURDIR)
 KB_API_KEY ?= change-me
 QUERY ?= 安全生产责任制的主要要求是什么

@@ -20,7 +20,7 @@ class MockEmbedder:
 
     dimension = 384
 
-    def encode(self, texts: list[str], normalize: bool) -> np.ndarray:
+    def encode(self, texts: list[str], normalize: bool, input_type: str = "document", instruction: str | None = None) -> np.ndarray:
         vectors = np.zeros((len(texts), self.dimension), dtype="float32")
         for row_idx, text in enumerate(texts):
             tokens = [text[i : i + 2] for i in range(max(len(text) - 1, 1))]
@@ -51,11 +51,29 @@ class TransformersEmbedder:
         self.model.eval()
         self.dimension = int(self.model.config.hidden_size)
 
-    def encode(self, texts: list[str], normalize: bool) -> np.ndarray:
+    def _prepare_texts(self, texts: list[str], input_type: str, instruction: str | None) -> list[str]:
+        if input_type != "query":
+            return texts
+        prefix = instruction if instruction is not None else settings.query_instruction
+        if not prefix:
+            return texts
+        return [prefix + text for text in texts]
+
+    def _pool(self, hidden, attention_mask):
+        pooling = settings.pooling.lower()
+        if pooling == "cls":
+            return hidden[:, 0]
+        if pooling == "mean":
+            mask = attention_mask.unsqueeze(-1).expand(hidden.size()).float()
+            return (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+        raise ValueError(f"unsupported pooling mode: {settings.pooling}")
+
+    def encode(self, texts: list[str], normalize: bool, input_type: str = "document", instruction: str | None = None) -> np.ndarray:
         vectors: list[np.ndarray] = []
+        prepared_texts = self._prepare_texts(texts, input_type=input_type, instruction=instruction)
         with self.torch.no_grad():
-            for start in range(0, len(texts), settings.batch_size):
-                batch = texts[start : start + settings.batch_size]
+            for start in range(0, len(prepared_texts), settings.batch_size):
+                batch = prepared_texts[start : start + settings.batch_size]
                 encoded = self.tokenizer(
                     batch,
                     padding=True,
@@ -65,9 +83,7 @@ class TransformersEmbedder:
                 )
                 encoded = {key: value.to(settings.device) for key, value in encoded.items()}
                 output = self.model(**encoded)
-                hidden = output.last_hidden_state
-                mask = encoded["attention_mask"].unsqueeze(-1).expand(hidden.size()).float()
-                pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+                pooled = self._pool(output.last_hidden_state, encoded["attention_mask"])
                 if normalize:
                     pooled = self.torch.nn.functional.normalize(pooled, p=2, dim=1)
                 vectors.append(pooled.cpu().numpy().astype("float32"))

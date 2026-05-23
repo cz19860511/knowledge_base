@@ -2,6 +2,19 @@
 
 目标：把当前本地知识库与 RAG 原型快速迁移到阿里云 ECS，作为 AgentArts `General` 第三方知识库的后端服务。
 
+当前部署状态：
+
+| 项目 | 值 |
+|---|---|
+| ECS 公网 IP | `8.161.227.173` |
+| 对外入口 | `http://8.161.227.173:9090` |
+| kb-api 直连端口 | `9091` |
+| embedding-service 端口 | `9100` |
+| 当前批次 | `batch_20260521` |
+| 当前模型 | `bge-small-zh-v1.5` |
+| 当前检索方案 | `keyword + bge-small embedding + rules` |
+| 当前验证状态 | `/health`、`/embed`、`/knowledge-bases/retrieve` 均已通过 |
+
 ## 1. 迁移原则
 
 - 本地继续保留研发环境，ECS 作为稳定运行环境。
@@ -44,16 +57,19 @@
 
 ```text
 /opt/kb-app/
-  app/
-    知识库服务代码
-    Dockerfile
-    docker-compose.yml
+  kb_api/
+  embedding_service/
+  scripts/
+  docs/
+  requirements-kb-api.txt
+  requirements-embedding-service.txt
 
 /data/kb/
   chunks/
   selected/
   vectors/
   rag/
+  models/
   logs/
   config/
 ```
@@ -64,6 +80,7 @@
 - `/data/kb/selected/` -> `selected/batch_20260521`
 - `/data/kb/vectors/` -> `vectors/batch_20260521`
 - `/data/kb/rag/` -> `rag/batch_20260521`
+- `/data/kb/models/bge-small-zh-v1.5/` -> 本地 `models/bge-small-zh-v1.5`
 
 ## 4. 迁移方式建议
 
@@ -90,19 +107,34 @@
 
 ## 5. ECS 上要起的服务
 
-第一版建议只起 3 个东西：
+第一版实际起 3 个服务：
 
-1. `kb-api`
+1. `embedding-service`
+   - 端口：`9100`
+   - 模型：`/data/kb/models/bge-small-zh-v1.5`
+   - 设备：CPU
+   - 作用：为建库和查询提供中文 embedding
+   - 镜像注意：使用 CPU-only PyTorch，避免拉取 CUDA 依赖
+
+2. `kb-api`
+   - 端口：`9091 -> 8080`
    - 提供 AgentArts 需要的 `General` 接口
    - 负责知识库列表、检索、返回 chunk 和来源信息
+   - 当前检索：关键词、embedding、规则增强融合
 
-2. `nginx`
+3. `nginx`
+   - 端口：`9090 -> 80`
    - 对外统一入口
    - 做 HTTPS、反向代理、限流
 
-3. `sqlite + 本地索引文件`
-   - 直接读 `vector_index.sqlite`
-   - 直接读 `vector_matrix.npz`
+运行依赖数据：
+
+- `chunks/batch_20260521/chunks.jsonl`
+- `vectors/batch_20260521/vector_index.sqlite`
+- `vectors/batch_20260521/keyword_matrix.npz`
+- `vectors/batch_20260521/embedding_matrix.npy`
+- `vectors/batch_20260521/embedding_model.joblib`
+- `models/bge-small-zh-v1.5/`
 
 ## 6. 部署顺序
 
@@ -120,16 +152,17 @@
 
 ### 第 3 步：上传到 ECS
 
-- 代码先到 `/opt/kb-app/app`
+- 代码先到 `/opt/kb-app/`
 - 数据到 `/data/kb/`
-- 先上传核心索引，再上传次要材料
+- 先上传核心索引和模型，再上传次要材料
 
 ### 第 4 步：ECS 上验证
 
 - 检查 `vector_index.sqlite` 是否可读
-- 检查 `vector_matrix.npz` 是否可加载
-- 检查检索脚本是否能返回结果
-- 检查 `rag_answer.py` 是否能正常回答
+- 检查 `embedding_matrix.npy` 是否为 `3053 x 512`
+- 检查 `embedding_model.joblib` 是否为 `bge-small-zh-v1.5`
+- 检查 `embedding-service` 是否返回 512 维向量
+- 检查 `kb-api` 检索是否返回 `hybrid` 和命中的业务规则
 
 ### 第 5 步：封装对外接口
 
@@ -167,7 +200,67 @@
 - `nginx.conf`
 - `requirements.txt`
 
-## 8. 建议的上线检查项
+## 8. ECS 启动与验证命令
+
+### 8.1 启动服务
+
+```bash
+cd /opt/kb-app/kb_api
+docker compose -f docker-compose.ecs.yml --profile embedding up -d --build
+```
+
+### 8.2 查看容器
+
+```bash
+docker compose -f /opt/kb-app/kb_api/docker-compose.ecs.yml -p kb_api ps
+```
+
+应看到：
+
+- `kb_api-embedding-service-1`
+- `kb_api-kb-api-1`
+- `kb_api-nginx-1`
+
+### 8.3 健康检查
+
+```bash
+curl http://127.0.0.1:9100/health
+curl http://127.0.0.1:9091/health
+curl http://127.0.0.1:9090/health
+curl http://8.161.227.173:9090/health
+```
+
+### 8.4 embedding 实测
+
+```bash
+curl -X POST http://127.0.0.1:9100/embed \
+  -H 'Content-Type: application/json' \
+  -d '{"texts":["test"],"normalize":true,"input_type":"query"}'
+```
+
+期望结果：
+
+- `model` 为 `bge-small-zh-v1.5`
+- `dimension` 为 `512`
+- `input_type` 为 `query`
+- `pooling` 为 `cls`
+
+### 8.5 检索实测
+
+```bash
+curl -X POST http://8.161.227.173:9090/knowledge-bases/retrieve \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <KB_API_KEY>' \
+  -d '{"knowledge_base_ids":["ai_qna_standard_v1"],"query":"服务区危化品车辆现场处理流程是什么","top_k":3,"limit":3,"search_threshold":0.0}'
+```
+
+期望结果：
+
+- `total` 大于 `0`
+- `retrieval_mode` 为 `hybrid`
+- `matched_rules` 包含 `hazmat_vehicle`
+
+## 9. 建议的上线检查项
 
 - 服务启动是否成功
 - 检索接口是否能返回 top_k
@@ -177,10 +270,10 @@
 - 是否有访问日志
 - 是否有错误日志
 
-## 9. 下一步建议
+## 10. 下一步建议
 
-1. 先把本地工程整理成可部署的服务仓库。
-2. 再准备 ECS 目录结构和 `docker-compose`。
-3. 然后迁移 `vectors` 和 `chunks`。
-4. 最后封装 `General` 接口并联调 AgentArts。
-
+1. 将 AgentArts 第三方知识库地址配置为 `http://8.161.227.173:9090`。
+2. 使用实际 `KB_API_KEY` 做连接测试。
+3. 正式联调前启用 HTTPS，减少公网 HTTP 暴露风险。
+4. 增加访问日志、错误日志和基础监控。
+5. 将每次发布的 `batch_id`、模型、索引 manifest 和验证结果归档。

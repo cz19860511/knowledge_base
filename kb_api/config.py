@@ -18,6 +18,8 @@ class Settings:
     retrieval_mode: str = os.getenv("KB_RETRIEVAL_MODE", "hybrid")
     keyword_weight: float = float(os.getenv("KB_KEYWORD_WEIGHT", "0.60"))
     embedding_weight: float = float(os.getenv("KB_EMBEDDING_WEIGHT", "0.40"))
+    rule_weight: float = float(os.getenv("KB_RULE_WEIGHT", "0.20"))
+    query_expansion_enabled: bool = os.getenv("KB_QUERY_EXPANSION_ENABLED", "true").lower() in {"1", "true", "yes"}
     candidate_multiplier: int = int(os.getenv("KB_CANDIDATE_MULTIPLIER", "8"))
     embedding_service_url: str = os.getenv("KB_EMBEDDING_SERVICE_URL", "http://embedding-service:9100")
     embedding_service_timeout: int = int(os.getenv("KB_EMBEDDING_SERVICE_TIMEOUT", "30"))

@@ -7,6 +7,7 @@
 - 原始资料预处理：以 MinerU 为主，Marker/MarkItDown 作为补充。
 - Chunk 生成：从确认后的 `selected.md` 生成可入库切片。
 - Hybrid 检索：关键词 TF-IDF + dense embedding 融合。
+- 检索策略增强：查询扩展、业务实体强召回、规则加权。
 - API 服务：`kb-api` 对外适配 AgentArts `General` 接口。
 - 独立 embedding 服务：`embedding_service` 支持中文 embedding 模型独立部署。
 

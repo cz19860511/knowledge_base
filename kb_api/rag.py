@@ -12,6 +12,7 @@ from scipy import sparse
 from sklearn.preprocessing import normalize
 
 from .config import settings
+from .retrieval_rules import RetrievalRule, expanded_query, match_rules
 
 
 @lru_cache(maxsize=1)
@@ -92,9 +93,61 @@ def _safe_normalize_scores(scores: np.ndarray) -> np.ndarray:
     return positive / max_score
 
 
+def _chunk_search_text(row: dict) -> str:
+    return "\n".join(
+        str(row.get(key) or "")
+        for key in ("doc_type", "folder", "section_path", "section_path_end", "source_file", "text")
+    )
+
+
+def _rule_scores(query: str, chunks: list[dict]) -> tuple[np.ndarray, list[str]]:
+    if not settings.query_expansion_enabled:
+        return np.zeros(len(chunks), dtype="float64"), []
+
+    rules = match_rules(query)
+    if not rules:
+        return np.zeros(len(chunks), dtype="float64"), []
+
+    scores = np.zeros(len(chunks), dtype="float64")
+    for idx, row in enumerate(chunks):
+        text = _chunk_search_text(row)
+        score = 0.0
+        for rule in rules:
+            score += _single_rule_score(rule, row, text)
+        scores[idx] = max(score, 0.0)
+    return scores, [rule.name for rule in rules]
+
+
+def _single_rule_score(rule: RetrievalRule, row: dict, text: str) -> float:
+    score = 0.0
+    section = str(row.get("section_path") or "")
+    doc_type = str(row.get("doc_type") or "")
+    folder = str(row.get("folder") or "")
+
+    for term in rule.boost_terms:
+        if term in text:
+            score += 1.0
+        if term in section:
+            score += 0.8
+
+    if doc_type and any(term in doc_type for term in rule.preferred_doc_types):
+        score += 0.8
+    if folder and any(term in folder for term in rule.preferred_folders):
+        score += 0.5
+
+    for term in rule.penalty_terms:
+        if term in text:
+            score -= 1.2
+
+    return score
+
+
 def _service_query_embedding(query: str):
     endpoint = settings.embedding_service_url.rstrip("/") + "/embed"
-    payload = json.dumps({"texts": [query], "normalize": True}, ensure_ascii=False).encode("utf-8")
+    payload = json.dumps(
+        {"texts": [query], "normalize": True, "input_type": "query"},
+        ensure_ascii=False,
+    ).encode("utf-8")
     req = urllib.request.Request(endpoint, data=payload, method="POST")
     req.add_header("Content-Type", "application/json")
     try:
@@ -127,12 +180,25 @@ def _query_embedding(query: str, q_vec):
     return None
 
 
-def _hybrid_scores(keyword_scores: np.ndarray, embedding_scores: np.ndarray | None) -> tuple[np.ndarray, str]:
+def _hybrid_scores(
+    keyword_scores: np.ndarray,
+    embedding_scores: np.ndarray | None,
+    rule_scores: np.ndarray,
+) -> tuple[np.ndarray, str]:
     mode = settings.retrieval_mode.lower()
     keyword_norm = _safe_normalize_scores(keyword_scores)
+    rule_norm = _safe_normalize_scores(rule_scores)
+    has_rule = bool(rule_norm.size and rule_norm.max() > 0)
 
     if embedding_scores is None:
-        return keyword_norm, "keyword"
+        if mode == "keyword" or not has_rule:
+            return keyword_norm, "keyword"
+        keyword_weight = max(settings.keyword_weight, 0.0)
+        rule_weight = max(settings.rule_weight, 0.0)
+        weight_sum = keyword_weight + rule_weight
+        if weight_sum <= 0:
+            return keyword_norm, "keyword"
+        return (keyword_weight / weight_sum) * keyword_norm + (rule_weight / weight_sum) * rule_norm, "keyword+rules"
 
     embedding_norm = _safe_normalize_scores(embedding_scores)
     if mode == "keyword":
@@ -142,11 +208,16 @@ def _hybrid_scores(keyword_scores: np.ndarray, embedding_scores: np.ndarray | No
 
     keyword_weight = max(settings.keyword_weight, 0.0)
     embedding_weight = max(settings.embedding_weight, 0.0)
-    weight_sum = keyword_weight + embedding_weight
+    rule_weight = max(settings.rule_weight, 0.0) if has_rule else 0.0
+    weight_sum = keyword_weight + embedding_weight + rule_weight
     if weight_sum <= 0:
-        keyword_weight, embedding_weight, weight_sum = 0.45, 0.55, 1.0
+        keyword_weight, embedding_weight, rule_weight, weight_sum = 0.50, 0.35, 0.15, 1.0
 
-    final_scores = (keyword_weight / weight_sum) * keyword_norm + (embedding_weight / weight_sum) * embedding_norm
+    final_scores = (
+        (keyword_weight / weight_sum) * keyword_norm
+        + (embedding_weight / weight_sum) * embedding_norm
+        + (rule_weight / weight_sum) * rule_norm
+    )
     return final_scores, "hybrid"
 
 
@@ -155,8 +226,11 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
     matrix = load_matrix()
     chunks = load_chunks()
 
-    q_vec = vectorizer.transform([query])
+    rules = match_rules(query) if settings.query_expansion_enabled else []
+    keyword_query = expanded_query(query, rules) if settings.query_expansion_enabled else query
+    q_vec = vectorizer.transform([keyword_query])
     keyword_scores = (matrix @ q_vec.T).toarray().ravel()
+    rule_scores, matched_rules = _rule_scores(query, chunks)
 
     embedding_scores = None
     embedding_matrix = load_embedding_matrix()
@@ -168,7 +242,7 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
     ):
         embedding_scores = (embedding_matrix @ q_embedding.ravel()).ravel()
 
-    scores, retrieval_mode = _hybrid_scores(keyword_scores, embedding_scores)
+    scores, retrieval_mode = _hybrid_scores(keyword_scores, embedding_scores, rule_scores)
     candidate_count = max(top_k, min(len(chunks), top_k * max(settings.candidate_multiplier, 1)))
     top_idx = scores.argsort()[::-1][:candidate_count]
 
@@ -190,6 +264,8 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
                 "score": score,
                 "keyword_score": float(keyword_scores[idx]),
                 "embedding_score": float(embedding_scores[idx]) if embedding_scores is not None else None,
+                "rule_score": float(rule_scores[idx]) if matched_rules else None,
+                "matched_rules": matched_rules or None,
                 "retrieval_mode": retrieval_mode,
                 "doc_type": row.get("doc_type"),
                 "folder": row.get("folder"),

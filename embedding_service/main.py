@@ -19,6 +19,8 @@ def health() -> HealthResponse:
         device=settings.device,
         max_length=settings.max_length,
         normalize=settings.normalize,
+        pooling=settings.pooling,
+        query_instruction_enabled=bool(settings.query_instruction),
     )
 
 
@@ -32,6 +34,8 @@ def models() -> dict:
             "device": settings.device,
             "max_length": settings.max_length,
             "batch_size": settings.batch_size,
+            "pooling": settings.pooling,
+            "query_instruction_enabled": bool(settings.query_instruction),
         }
     }
 
@@ -40,13 +44,15 @@ def models() -> dict:
 def embed(req: EmbedRequest) -> EmbedResponse:
     embedder = get_embedder()
     normalize = settings.normalize if req.normalize is None else req.normalize
-    vectors = embedder.encode(req.texts, normalize=normalize)
+    vectors = embedder.encode(req.texts, normalize=normalize, input_type=req.input_type, instruction=req.instruction)
     return EmbedResponse(
         model=settings.model_name,
         provider=settings.provider,
         dimension=int(vectors.shape[1]),
         count=int(vectors.shape[0]),
         normalized=normalize,
+        input_type=req.input_type,
+        pooling=settings.pooling,
         embeddings=vectors.tolist(),
     )
 

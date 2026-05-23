@@ -86,7 +86,11 @@ def build_service_embedding(
 
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
-        response = _post_json(endpoint, {"texts": batch, "normalize": True}, timeout=timeout)
+        response = _post_json(
+            endpoint,
+            {"texts": batch, "normalize": True, "input_type": "document"},
+            timeout=timeout,
+        )
         embeddings.extend(response["embeddings"])
         model_name = response.get("model", model_name)
         provider = response.get("provider", provider)
@@ -101,6 +105,8 @@ def build_service_embedding(
         "model": model_name,
         "dimension": int(matrix.shape[1] if matrix.size else dimension),
         "build_service_url": service_url,
+        "document_input_type": "document",
+        "pooling": response.get("pooling") if texts else None,
     }
     return matrix, model_info
 
@@ -128,6 +134,8 @@ def write_manifest(rows: list[dict], keyword_matrix, embedding_matrix: np.ndarra
         "hybrid_default": {
             "keyword_weight": 0.6,
             "embedding_weight": 0.4,
+            "rule_weight": 0.2,
+            "query_expansion_enabled": True,
             "candidate_multiplier": 8,
         },
         "stored_files": {

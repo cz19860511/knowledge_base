@@ -22,6 +22,8 @@ source /Users/chenzhuo/hb/.venv_kb/bin/activate
 export KB_EMBEDDING_PROVIDER=transformers
 export KB_EMBEDDING_MODEL_PATH=/data/kb/models/bge-small-zh-v1.5
 export KB_EMBEDDING_MODEL_NAME=bge-small-zh-v1.5
+export KB_EMBEDDING_POOLING=cls
+export KB_EMBEDDING_QUERY_INSTRUCTION=为这个句子生成表示以用于检索相关文章：
 uvicorn embedding_service.main:app --host 0.0.0.0 --port 9100
 ```
 
@@ -39,7 +41,7 @@ curl http://127.0.0.1:9100/health
 
 curl -X POST http://127.0.0.1:9100/embed \
   -H 'Content-Type: application/json' \
-  -d '{"texts":["安全生产责任制的主要要求是什么"],"normalize":true}'
+  -d '{"texts":["安全生产责任制的主要要求是什么"],"normalize":true,"input_type":"query"}'
 ```
 
 ## 建库接入

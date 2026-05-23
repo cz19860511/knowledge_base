@@ -10,6 +10,8 @@ services:
     environment:
       KB_EMBEDDING_PROVIDER: mock
       KB_EMBEDDING_MODEL_NAME: mock-zh-384
+      KB_EMBEDDING_POOLING: cls
+      KB_EMBEDDING_QUERY_INSTRUCTION: 为这个句子生成表示以用于检索相关文章：
 
   kb-api:
     build:
