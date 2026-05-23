@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
@@ -277,18 +278,50 @@ def write_evaluation(records: list[FileRecord]) -> None:
     md_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def load_existing_evaluation() -> list[FileRecord]:
+    json_path = EVAL_OUT / "parse_summary.json"
+    if not json_path.exists():
+        return []
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    records: list[FileRecord] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            records.append(FileRecord(**item))
+        except TypeError:
+            continue
+    return records
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--folders",
+        nargs="*",
+        default=None,
+        help="limit processing to the given top-level raw folders",
+    )
+    args = parser.parse_args()
+
     ensure_dirs()
     link_staging()
 
-    folders = ALLOWED_FOLDERS
+    folders = [f for f in (args.folders or ALLOWED_FOLDERS) if f in ALLOWED_FOLDERS]
     all_files = list(iter_source_files())
+    if args.folders:
+        all_files = [p for p in all_files if p.parent.name in folders]
     print(f"source files: {len(all_files)}")
 
     by_folder: dict[str, list[Path]] = {f: [] for f in folders}
     for p in all_files:
         by_folder[p.parent.name].append(p)
 
+    existing_records = load_existing_evaluation()
+    existing_by_path = {record.source_path: record for record in existing_records}
     records: list[FileRecord] = []
 
     # 1) MinerU 主处理
@@ -309,11 +342,13 @@ def main() -> None:
             continue
         records.extend(parse_mineru_outputs(folder, by_folder[folder]))
 
-    records.sort(key=lambda r: (folders.index(r.folder), r.file_name))
-    write_evaluation(records)
+    merged_records = [record for record in existing_records if record.folder not in folders]
+    merged_records.extend(records)
+    merged_records.sort(key=lambda r: (ALLOWED_FOLDERS.index(r.folder), r.file_name))
+    write_evaluation(merged_records)
 
     # 4) 先生成 selected 候选清单目录，供后续人工筛选
-    selected_candidates = [asdict(r) for r in records if r.recommendation == "selected_candidate"]
+    selected_candidates = [asdict(r) for r in merged_records if r.recommendation == "selected_candidate"]
     (SELECTED_OUT / "candidate_list.json").write_text(json.dumps(selected_candidates, ensure_ascii=False, indent=2), encoding="utf-8")
     (SELECTED_OUT / "candidate_list.md").write_text(
         "# selected 候选清单\n\n" + "\n".join(f"- {r['folder']} / {r['file_name']} / {r['score']}" for r in selected_candidates[:200]),

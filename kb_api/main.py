@@ -102,7 +102,7 @@ def raw_files(include_deleted: bool = Query(default=False)) -> RawFileListRespon
 def upload_raw_files(
     folder: str = Form(...),
     files: list[UploadFile] = File(...),
-    run_pipeline: bool = Form(default=True),
+    run_pipeline: bool = Form(default=False),
 ) -> RawUploadResponse:
     payload = save_uploaded_files(folder=folder, uploads=files)
     pipeline_status = None
@@ -121,7 +121,7 @@ def upload_raw_files(
 def remove_raw_file(
     folder: str = Query(...),
     file_name: str = Query(...),
-    run_pipeline: bool = Query(default=True),
+    run_pipeline: bool = Query(default=False),
 ) -> RawDeleteResponse:
     payload = delete_raw_file(folder=folder, file_name=file_name)
     if run_pipeline:
@@ -135,11 +135,16 @@ def raw_pipeline_status() -> RawPipelineStatus:
 
 
 @app.post("/raw-files/pipeline", response_model=RawPipelineResponse, dependencies=[Depends(require_api_key)])
-def trigger_raw_pipeline(force: bool = Query(default=False)) -> RawPipelineResponse:
+def trigger_raw_pipeline(
+    stage: str = Query(default="all"),
+    folder: str | None = Query(default=None),
+    force: bool = Query(default=False),
+) -> RawPipelineResponse:
     status = get_pipeline_status()
     if status.get("running") and not force:
         return RawPipelineResponse(started=False, status=RawPipelineStatus(**status))
-    started_status = start_pipeline(trigger_reason="manual" if not force else "manual_force")
+    trigger_reason = f"{stage}:{folder or 'all'}"
+    started_status = start_pipeline(stage=stage, folder=folder, trigger_reason=trigger_reason, force=force)
     return RawPipelineResponse(started=bool(started_status.get("running")), status=RawPipelineStatus(**started_status))
 
 

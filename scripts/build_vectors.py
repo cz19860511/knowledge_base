@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import json
+import os
 import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -212,6 +214,15 @@ def build_rag_summary(rows: list[dict], matrix) -> Path:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--folders",
+        nargs="*",
+        default=None,
+        help="accepted for stage alignment; vector build always uses the merged chunk store",
+    )
+    args = parser.parse_args()
+
     if not CHUNKS_JSONL.exists():
         raise FileNotFoundError(f"missing chunks file: {CHUNKS_JSONL}")
 
@@ -220,6 +231,8 @@ def main() -> None:
     ensure_clean_dir(PACKAGES_ROOT)
 
     rows = load_chunks()
+    if args.folders:
+        print(f"[info] folders requested: {', '.join(args.folders)}")
     texts = [row["text"] for row in rows]
 
     vectorizer = TfidfVectorizer(

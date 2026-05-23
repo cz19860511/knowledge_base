@@ -24,11 +24,11 @@ ALLOWED_FOLDERS = [
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PIPELINE_SCRIPTS = [
-    ("preprocess", REPO_ROOT / "scripts" / "preprocess_raw_02_07.py"),
-    ("chunk", REPO_ROOT / "scripts" / "build_selected_and_chunks.py"),
-    ("embedding", REPO_ROOT / "scripts" / "build_vectors.py"),
-]
+PIPELINE_STAGE_SCRIPTS = {
+    "preprocess": REPO_ROOT / "scripts" / "preprocess_raw_02_07.py",
+    "chunk": REPO_ROOT / "scripts" / "build_selected_and_chunks.py",
+    "embedding": REPO_ROOT / "scripts" / "build_vectors.py",
+}
 
 _PIPELINE_LOCK = threading.Lock()
 _PIPELINE_THREAD: threading.Thread | None = None
@@ -67,7 +67,9 @@ def _status_default() -> dict:
     return {
         "running": False,
         "state": "idle",
+        "current_stage": "",
         "current_step": "",
+        "current_folder": "",
         "run_id": "",
         "trigger_reason": "",
         "started_at": "",
@@ -378,7 +380,21 @@ def _append_pipeline_log(text: str) -> None:
             f.write("\n")
 
 
-def _run_pipeline_job(run_id: str, trigger_reason: str) -> None:
+def _run_script(script: Path, stage: str, folder: str | None, env: dict[str, str]) -> None:
+    cmd = [sys.executable, str(script)]
+    if folder:
+        cmd.extend(["--folders", folder])
+    _append_pipeline_log(f"[{_now_iso()}] >>> {stage}: {script} folder={folder or 'all'}")
+    result = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env, capture_output=True, text=True)
+    if result.stdout:
+        _append_pipeline_log(result.stdout.rstrip("\n"))
+    if result.stderr:
+        _append_pipeline_log(result.stderr.rstrip("\n"))
+    if result.returncode != 0:
+        raise RuntimeError(f"{stage} failed with exit code {result.returncode}")
+
+
+def _run_pipeline_job(run_id: str, trigger_reason: str, stage: str, folder: str | None) -> None:
     env = os.environ.copy()
     env["KB_ROOT_DIR"] = str(settings.root_dir)
     env["KB_BATCH_ID"] = settings.batch_id
@@ -386,27 +402,18 @@ def _run_pipeline_job(run_id: str, trigger_reason: str) -> None:
     env["PYTHONUNBUFFERED"] = "1"
 
     try:
-        for step_name, script in PIPELINE_SCRIPTS:
-            _update_pipeline_status(current_step=step_name)
-            _append_pipeline_log(f"[{_now_iso()}] >>> {step_name}: {script}")
-            result = subprocess.run(
-                [sys.executable, str(script)],
-                cwd=str(REPO_ROOT),
-                env=env,
-                capture_output=True,
-                text=True,
-            )
-            if result.stdout:
-                _append_pipeline_log(result.stdout.rstrip("\n"))
-            if result.stderr:
-                _append_pipeline_log(result.stderr.rstrip("\n"))
-            if result.returncode != 0:
-                raise RuntimeError(f"{step_name} failed with exit code {result.returncode}")
+        stages = ["preprocess", "chunk", "embedding"] if stage == "all" else [stage]
+        for step_name in stages:
+            script = PIPELINE_STAGE_SCRIPTS[step_name]
+            _update_pipeline_status(current_stage=step_name, current_step=step_name, current_folder=folder or "")
+            _run_script(script, step_name, folder, env)
 
         _update_pipeline_status(
             running=False,
             state="success",
+            current_stage=stage,
             current_step="done",
+            current_folder=folder or "",
             finished_at=_now_iso(),
             last_success_at=_now_iso(),
             last_error="",
@@ -418,7 +425,9 @@ def _run_pipeline_job(run_id: str, trigger_reason: str) -> None:
         _update_pipeline_status(
             running=False,
             state="failed",
+            current_stage=stage,
             current_step="failed",
+            current_folder=folder or "",
             finished_at=_now_iso(),
             last_error=str(exc),
             exit_code=1,
@@ -426,18 +435,23 @@ def _run_pipeline_job(run_id: str, trigger_reason: str) -> None:
         )
 
 
-def start_pipeline(trigger_reason: str = "manual") -> dict:
+def start_pipeline(stage: str = "all", folder: str | None = None, trigger_reason: str = "manual", force: bool = False) -> dict:
     global _PIPELINE_THREAD
+    stage = stage if stage in {"preprocess", "chunk", "embedding", "all"} else "all"
+    if folder is not None:
+        folder = _validate_folder(folder)
     with _PIPELINE_LOCK:
         status = load_pipeline_status()
-        if status.get("running"):
+        if status.get("running") and not force:
             return status
         run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         status.update(
             {
                 "running": True,
                 "state": "running",
+                "current_stage": stage,
                 "current_step": "queued",
+                "current_folder": folder or "",
                 "run_id": run_id,
                 "trigger_reason": trigger_reason,
                 "started_at": _now_iso(),
@@ -449,7 +463,7 @@ def start_pipeline(trigger_reason: str = "manual") -> dict:
         )
         _save_pipeline_status(status)
 
-        thread = threading.Thread(target=_run_pipeline_job, args=(run_id, trigger_reason), daemon=True)
+        thread = threading.Thread(target=_run_pipeline_job, args=(run_id, trigger_reason, stage, folder), daemon=True)
         _PIPELINE_THREAD = thread
         thread.start()
         return status
@@ -459,7 +473,9 @@ def get_pipeline_status() -> dict:
     status = load_pipeline_status()
     status.setdefault("running", False)
     status.setdefault("state", "idle")
+    status.setdefault("current_stage", "")
     status.setdefault("current_step", "")
+    status.setdefault("current_folder", "")
     status.setdefault("run_id", "")
     status.setdefault("trigger_reason", "")
     status.setdefault("started_at", "")

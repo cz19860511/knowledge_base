@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import json
+import os
 import re
 import shutil
 from datetime import datetime
@@ -381,162 +383,19 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def main() -> None:
-    records = load_parse_summary()
-    source_index = build_source_index(records)
-
-    ensure_clean_outputs()
-
-    ordered = sorted(records, key=lambda x: (FOLDER_ORDER.index(x["folder"]), x["file_name"]))
-    selected_rows: list[SelectedDoc] = []
-    chunk_rows: list[ChunkRecord] = []
-    preview_rows: list[dict] = []
-
-    for seq, item in enumerate(ordered, 1):
-        src = Path(item["source_path"])
-        best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src)
-        if best_md is None:
-            print(f"[skip] no markdown found: {src}")
+def remove_selected_doc_dirs(rows: list[SelectedDoc], folders: set[str]) -> None:
+    for row in rows:
+        if row.folder not in folders:
             continue
+        doc_dir = Path(row.selected_md_path).parent
+        if doc_dir.exists():
+            shutil.rmtree(doc_dir)
 
-        folder = item["folder"]
-        file_name = item["file_name"]
-        doc_type = doc_type_for_folder(folder)
-        knowledge_domain = folder
-        version = version_from_name(file_name)
-        permissions = "internal"
-        doc_id = f"{BATCH_ID}_{seq:03d}"
-        doc_slug = f"{seq:03d}_{safe_name(Path(file_name).stem)}"
-        doc_dir = SELECTED_DOCS_ROOT / doc_slug
-        doc_dir.mkdir(parents=True, exist_ok=True)
 
-        selected_md_path = doc_dir / "selected.md"
-        selected_meta_path = doc_dir / "selected_meta.json"
-        selected_text = normalize_text(read_text(best_md))
-        write_text(selected_md_path, selected_text + "\n")
+def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord], preview_rows: list[dict]) -> None:
+    SELECTED_BATCH_ROOT.mkdir(parents=True, exist_ok=True)
+    CHUNKS_BATCH_ROOT.mkdir(parents=True, exist_ok=True)
 
-        selected_meta = {
-            "doc_id": doc_id,
-            "doc_seq": seq,
-            "folder": folder,
-            "file_name": file_name,
-            "file_ext": src.suffix.lower().lstrip("."),
-            "source_path": str(src),
-            "selected_md_source": str(best_md),
-            "selected_md_parser": parser,
-            "version": version,
-            "doc_type": doc_type,
-            "knowledge_domain": knowledge_domain,
-            "permissions": permissions,
-            "parser_primary": item.get("parser_primary", ""),
-            "parser_secondary": item.get("parser_secondary", ""),
-            "parse_state": item.get("parse_state", ""),
-            "recommendation": item.get("recommendation", ""),
-            "score": item.get("score", 0),
-            "char_count": char_count,
-            "heading_count": heading_count,
-            "table_count": table_count,
-            "note": item.get("note", ""),
-        }
-        write_text(selected_meta_path, json.dumps(selected_meta, ensure_ascii=False, indent=2))
-
-        selected_rows.append(
-            SelectedDoc(
-                doc_id=doc_id,
-                doc_seq=seq,
-                folder=folder,
-                file_name=file_name,
-                file_ext=src.suffix.lower().lstrip("."),
-                version=version,
-                doc_type=doc_type,
-                knowledge_domain=knowledge_domain,
-                permissions=permissions,
-                source_path=str(src),
-                selected_md_path=str(selected_md_path),
-                selected_md_source=str(best_md),
-                parser_primary=item.get("parser_primary", ""),
-                parser_secondary=item.get("parser_secondary", ""),
-                parse_state=item.get("parse_state", ""),
-                recommendation=item.get("recommendation", ""),
-                score=int(item.get("score", 0)),
-                char_count=char_count,
-                heading_count=heading_count,
-                table_count=table_count,
-                note=item.get("note", ""),
-            )
-        )
-
-        chunks = build_chunks_from_text(selected_text)
-        if not chunks:
-            chunks = [
-                {
-                    "text": selected_text[:MAX_CHUNK_CHARS],
-                    "section_path": "",
-                    "section_path_end": "",
-                    "page_start": None,
-                    "page_end": None,
-                    "unit_count": 1,
-                }
-            ]
-
-        for chunk_idx, chunk in enumerate(chunks, 1):
-            chunk_id = f"{doc_id}_c{chunk_idx:03d}"
-            keywords = extract_keywords(folder, doc_type, chunk.get("section_path", ""), chunk.get("section_path_end", ""), version)
-            chunk_rows.append(
-                ChunkRecord(
-                    chunk_id=chunk_id,
-                    doc_id=doc_id,
-                    doc_seq=seq,
-                    doc_name=file_name,
-                    folder=folder,
-                    file_name=file_name,
-                    doc_type=doc_type,
-                    knowledge_domain=knowledge_domain,
-                    version=version,
-                    permissions=permissions,
-                    source_file=str(src),
-                    source_md=str(best_md),
-                    selected_md=str(selected_md_path),
-                    parser=parser,
-                    parse_state=item.get("parse_state", ""),
-                    recommendation=item.get("recommendation", ""),
-                    score=int(item.get("score", 0)),
-                    chunk_index=chunk_idx,
-                    chunk_count=len(chunks),
-                    section_path=chunk.get("section_path", ""),
-                    section_path_end=chunk.get("section_path_end", ""),
-                    page_start=chunk.get("page_start"),
-                    page_end=chunk.get("page_end"),
-                    char_count=len(chunk["text"]),
-                    keywords=keywords,
-                    text=chunk["text"],
-                )
-            )
-            preview_rows.append(
-                {
-                    "chunk_id": chunk_id,
-                    "doc_id": doc_id,
-                    "doc_seq": seq,
-                    "folder": folder,
-                    "doc_type": doc_type,
-                    "version": version,
-                    "parser": parser,
-                    "chunk_index": chunk_idx,
-                    "chunk_count": len(chunks),
-                    "char_count": len(chunk["text"]),
-                    "page_start": chunk.get("page_start"),
-                    "page_end": chunk.get("page_end"),
-                    "section_path": chunk.get("section_path", ""),
-                    "section_path_end": chunk.get("section_path_end", ""),
-                    "text_preview": chunk["text"][:160].replace("\n", " "),
-                    "selected_md": str(selected_md_path),
-                    "source_md": str(best_md),
-                }
-            )
-
-        print(f"[chunked] {seq:03d} {file_name} -> {len(chunks)} chunks via {parser}")
-
-    # Write selected manifest
     selected_manifest_path = SELECTED_BATCH_ROOT / "selected_manifest.json"
     selected_manifest_md = SELECTED_BATCH_ROOT / "selected_manifest.md"
     selected_manifest_path.write_text(
@@ -555,7 +414,6 @@ def main() -> None:
     ]
     selected_manifest_md.write_text("\n".join(selected_summary), encoding="utf-8")
 
-    # Write chunk outputs
     chunks_jsonl = CHUNKS_BATCH_ROOT / "chunks.jsonl"
     chunk_stats_path = CHUNKS_BATCH_ROOT / "chunk_stats.json"
     preview_csv = CHUNKS_BATCH_ROOT / "chunks_preview.csv"
@@ -565,7 +423,6 @@ def main() -> None:
         for row in chunk_rows:
             f.write(json.dumps(asdict(row), ensure_ascii=False) + "\n")
 
-    # Stats
     doc_chunk_counts: dict[str, int] = {}
     chunk_sizes: list[int] = []
     parser_counts: dict[str, int] = {}
@@ -617,6 +474,337 @@ def main() -> None:
     print(f"chunks: {len(chunk_rows)}")
     print(f"selected manifest: {selected_manifest_path}")
     print(f"chunk jsonl: {chunks_jsonl}")
+
+
+def build_for_records(records: list[dict], target_folders: set[str] | None = None) -> tuple[list[SelectedDoc], list[ChunkRecord], list[dict]]:
+    if target_folders is None:
+        ensure_clean_outputs()
+        ordered = sorted(records, key=lambda x: (FOLDER_ORDER.index(x["folder"]), x["file_name"]))
+        selected_rows: list[SelectedDoc] = []
+        chunk_rows: list[ChunkRecord] = []
+        preview_rows: list[dict] = []
+        next_seq = 0
+        for item in ordered:
+            src = Path(item["source_path"])
+            best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src)
+            if best_md is None:
+                print(f"[skip] no markdown found: {src}")
+                continue
+
+            next_seq += 1
+            seq = next_seq
+            row, _, selected_md_path = build_selected_doc_from_item(item, seq, best_md, parser, char_count, heading_count, table_count)
+            selected_rows.append(row)
+
+            selected_text = normalize_text(read_text(best_md))
+            chunks = build_chunks_from_text(selected_text)
+            if not chunks:
+                chunks = [
+                    {
+                        "text": selected_text[:MAX_CHUNK_CHARS],
+                        "section_path": "",
+                        "section_path_end": "",
+                        "page_start": None,
+                        "page_end": None,
+                        "unit_count": 1,
+                    }
+                ]
+
+            for chunk_idx, chunk in enumerate(chunks, 1):
+                chunk_id = f"{row.doc_id}_c{chunk_idx:03d}"
+                keywords = extract_keywords(row.folder, row.doc_type, chunk.get("section_path", ""), chunk.get("section_path_end", ""), row.version)
+                chunk_rows.append(
+                    ChunkRecord(
+                        chunk_id=chunk_id,
+                        doc_id=row.doc_id,
+                        doc_seq=seq,
+                        doc_name=row.file_name,
+                        folder=row.folder,
+                        file_name=row.file_name,
+                        doc_type=row.doc_type,
+                        knowledge_domain=row.knowledge_domain,
+                        version=row.version,
+                        permissions=row.permissions,
+                        source_file=row.source_path,
+                        source_md=str(best_md),
+                        selected_md=str(selected_md_path),
+                        parser=parser,
+                        parse_state=row.parse_state,
+                        recommendation=row.recommendation,
+                        score=row.score,
+                        chunk_index=chunk_idx,
+                        chunk_count=len(chunks),
+                        section_path=chunk.get("section_path", ""),
+                        section_path_end=chunk.get("section_path_end", ""),
+                        page_start=chunk.get("page_start"),
+                        page_end=chunk.get("page_end"),
+                        char_count=len(chunk["text"]),
+                        keywords=keywords,
+                        text=chunk["text"],
+                    )
+                )
+                preview_rows.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "doc_id": row.doc_id,
+                        "doc_seq": seq,
+                        "folder": row.folder,
+                        "doc_type": row.doc_type,
+                        "version": row.version,
+                        "parser": parser,
+                        "chunk_index": chunk_idx,
+                        "chunk_count": len(chunks),
+                        "char_count": len(chunk["text"]),
+                        "page_start": chunk.get("page_start"),
+                        "page_end": chunk.get("page_end"),
+                        "section_path": chunk.get("section_path", ""),
+                        "section_path_end": chunk.get("section_path_end", ""),
+                        "text_preview": chunk["text"][:160].replace("\n", " "),
+                        "selected_md": str(selected_md_path),
+                        "source_md": str(best_md),
+                    }
+                )
+            print(f"[chunked] {seq:03d} {row.file_name} -> {len(chunks)} chunks via {parser}")
+
+        selected_rows.sort(key=lambda row: (row.doc_seq, row.folder, row.file_name))
+        chunk_rows.sort(key=lambda row: (row.doc_seq, row.chunk_index, row.chunk_id))
+        preview_rows.sort(key=lambda row: (row["doc_seq"], row["chunk_index"], row["chunk_id"]))
+        return selected_rows, chunk_rows, preview_rows
+
+    existing_selected = load_selected_manifest_rows()
+    existing_chunks = load_chunk_rows()
+    remove_selected_doc_dirs(existing_selected, target_folders)
+
+    selected_by_source = {row.source_path: row for row in existing_selected}
+    kept_selected = [row for row in existing_selected if row.folder not in target_folders]
+    kept_chunks = [row for row in existing_chunks if row.folder not in target_folders]
+    next_seq = max((row.doc_seq for row in kept_selected), default=0)
+
+    target_records = [item for item in records if item["folder"] in target_folders]
+    ordered = sorted(target_records, key=lambda x: (FOLDER_ORDER.index(x["folder"]), x["file_name"]))
+    rebuilt_selected: list[SelectedDoc] = []
+    rebuilt_chunks: list[ChunkRecord] = []
+    preview_rows: list[dict] = []
+
+    for item in ordered:
+        src = Path(item["source_path"])
+        best_md, parser, char_count, heading_count, table_count = choose_best_markdown(src)
+        if best_md is None:
+            print(f"[skip] no markdown found: {src}")
+            continue
+
+        existing_row = selected_by_source.get(str(src))
+        if existing_row and existing_row.folder in target_folders:
+            seq = existing_row.doc_seq
+        else:
+            next_seq += 1
+            seq = next_seq
+
+        row, _, selected_md_path = build_selected_doc_from_item(item, seq, best_md, parser, char_count, heading_count, table_count)
+        rebuilt_selected.append(row)
+
+        selected_text = normalize_text(read_text(best_md))
+        chunks = build_chunks_from_text(selected_text)
+        if not chunks:
+            chunks = [
+                {
+                    "text": selected_text[:MAX_CHUNK_CHARS],
+                    "section_path": "",
+                    "section_path_end": "",
+                    "page_start": None,
+                    "page_end": None,
+                    "unit_count": 1,
+                }
+            ]
+
+        for chunk_idx, chunk in enumerate(chunks, 1):
+            chunk_id = f"{row.doc_id}_c{chunk_idx:03d}"
+            keywords = extract_keywords(row.folder, row.doc_type, chunk.get("section_path", ""), chunk.get("section_path_end", ""), row.version)
+            rebuilt_chunks.append(
+                ChunkRecord(
+                    chunk_id=chunk_id,
+                    doc_id=row.doc_id,
+                    doc_seq=seq,
+                    doc_name=row.file_name,
+                    folder=row.folder,
+                    file_name=row.file_name,
+                    doc_type=row.doc_type,
+                    knowledge_domain=row.knowledge_domain,
+                    version=row.version,
+                    permissions=row.permissions,
+                    source_file=row.source_path,
+                    source_md=str(best_md),
+                    selected_md=str(selected_md_path),
+                    parser=parser,
+                    parse_state=row.parse_state,
+                    recommendation=row.recommendation,
+                    score=row.score,
+                    chunk_index=chunk_idx,
+                    chunk_count=len(chunks),
+                    section_path=chunk.get("section_path", ""),
+                    section_path_end=chunk.get("section_path_end", ""),
+                    page_start=chunk.get("page_start"),
+                    page_end=chunk.get("page_end"),
+                    char_count=len(chunk["text"]),
+                    keywords=keywords,
+                    text=chunk["text"],
+                )
+            )
+            preview_rows.append(
+                {
+                    "chunk_id": chunk_id,
+                    "doc_id": row.doc_id,
+                    "doc_seq": seq,
+                    "folder": row.folder,
+                    "doc_type": row.doc_type,
+                    "version": row.version,
+                    "parser": parser,
+                    "chunk_index": chunk_idx,
+                    "chunk_count": len(chunks),
+                    "char_count": len(chunk["text"]),
+                    "page_start": chunk.get("page_start"),
+                    "page_end": chunk.get("page_end"),
+                    "section_path": chunk.get("section_path", ""),
+                    "section_path_end": chunk.get("section_path_end", ""),
+                    "text_preview": chunk["text"][:160].replace("\n", " "),
+                    "selected_md": str(selected_md_path),
+                    "source_md": str(best_md),
+                }
+            )
+        print(f"[chunked] {seq:03d} {row.file_name} -> {len(chunks)} chunks via {parser}")
+
+    merged_selected = kept_selected + rebuilt_selected
+    merged_chunks = kept_chunks + rebuilt_chunks
+    merged_selected.sort(key=lambda row: (row.doc_seq, row.folder, row.file_name))
+    merged_chunks.sort(key=lambda row: (row.doc_seq, row.chunk_index, row.chunk_id))
+    preview_rows.sort(key=lambda row: (row["doc_seq"], row["chunk_index"], row["chunk_id"]))
+    return merged_selected, merged_chunks, preview_rows
+
+
+def load_selected_manifest_rows() -> list[SelectedDoc]:
+    manifest_path = SELECTED_BATCH_ROOT / "selected_manifest.json"
+    if not manifest_path.exists():
+        return []
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    rows: list[SelectedDoc] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            rows.append(SelectedDoc(**item))
+        except TypeError:
+            continue
+    return rows
+
+
+def load_chunk_rows() -> list[ChunkRecord]:
+    chunks_path = CHUNKS_BATCH_ROOT / "chunks.jsonl"
+    if not chunks_path.exists():
+        return []
+    rows: list[ChunkRecord] = []
+    with chunks_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+                rows.append(ChunkRecord(**payload))
+            except (json.JSONDecodeError, TypeError):
+                continue
+    return rows
+
+
+def build_selected_doc_from_item(item: dict, seq: int, best_md: Path, parser: str, char_count: int, heading_count: int, table_count: int) -> tuple[SelectedDoc, dict, Path]:
+    src = Path(item["source_path"])
+    folder = item["folder"]
+    file_name = item["file_name"]
+    doc_type = doc_type_for_folder(folder)
+    knowledge_domain = folder
+    version = version_from_name(file_name)
+    permissions = "internal"
+    doc_id = f"{BATCH_ID}_{seq:03d}"
+    doc_slug = f"{seq:03d}_{safe_name(Path(file_name).stem)}"
+    doc_dir = SELECTED_DOCS_ROOT / doc_slug
+    doc_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_md_path = doc_dir / "selected.md"
+    selected_meta_path = doc_dir / "selected_meta.json"
+    selected_text = normalize_text(read_text(best_md))
+    write_text(selected_md_path, selected_text + "\n")
+
+    selected_meta = {
+        "doc_id": doc_id,
+        "doc_seq": seq,
+        "folder": folder,
+        "file_name": file_name,
+        "file_ext": src.suffix.lower().lstrip("."),
+        "source_path": str(src),
+        "selected_md_source": str(best_md),
+        "selected_md_parser": parser,
+        "version": version,
+        "doc_type": doc_type,
+        "knowledge_domain": knowledge_domain,
+        "permissions": permissions,
+        "parser_primary": item.get("parser_primary", ""),
+        "parser_secondary": item.get("parser_secondary", ""),
+        "parse_state": item.get("parse_state", ""),
+        "recommendation": item.get("recommendation", ""),
+        "score": item.get("score", 0),
+        "char_count": char_count,
+        "heading_count": heading_count,
+        "table_count": table_count,
+        "note": item.get("note", ""),
+    }
+    write_text(selected_meta_path, json.dumps(selected_meta, ensure_ascii=False, indent=2))
+
+    row = SelectedDoc(
+        doc_id=doc_id,
+        doc_seq=seq,
+        folder=folder,
+        file_name=file_name,
+        file_ext=src.suffix.lower().lstrip("."),
+        version=version,
+        doc_type=doc_type,
+        knowledge_domain=knowledge_domain,
+        permissions=permissions,
+        source_path=str(src),
+        selected_md_path=str(selected_md_path),
+        selected_md_source=str(best_md),
+        parser_primary=item.get("parser_primary", ""),
+        parser_secondary=item.get("parser_secondary", ""),
+        parse_state=item.get("parse_state", ""),
+        recommendation=item.get("recommendation", ""),
+        score=int(item.get("score", 0)),
+        char_count=char_count,
+        heading_count=heading_count,
+        table_count=table_count,
+        note=item.get("note", ""),
+    )
+    return row, selected_meta, selected_md_path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--folders",
+        nargs="*",
+        default=None,
+        help="limit processing to the given top-level raw folders",
+    )
+    args = parser.parse_args()
+
+    records = load_parse_summary()
+    target_folders = {folder for folder in (args.folders or []) if folder in FOLDER_ORDER}
+    if target_folders:
+        selected_rows, chunk_rows, preview_rows = build_for_records(records, target_folders=target_folders)
+    else:
+        selected_rows, chunk_rows, preview_rows = build_for_records(records, target_folders=None)
+
+    write_outputs(selected_rows, chunk_rows, preview_rows)
 
 
 if __name__ == "__main__":

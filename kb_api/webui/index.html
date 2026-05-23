@@ -73,19 +73,15 @@
               <span>批量文件</span>
               <input id="raw-files" type="file" multiple />
             </label>
-            <label class="field raw-toggle-field">
-              <span>更新后自动重建</span>
-              <label class="switch-row">
-                <input id="raw-run-pipeline" type="checkbox" checked />
-                <span>上传/删除后自动执行预处理、Chunk 和 Embedding</span>
-              </label>
-            </label>
             <div class="field raw-actions-field">
               <span>操作</span>
               <div class="actions-row">
                 <button class="primary-btn" id="upload-raw-files">上传并更新版本</button>
-                <button class="ghost-btn" id="trigger-pipeline">手动重建</button>
+                <button class="ghost-btn" id="run-preprocess">预处理</button>
+                <button class="ghost-btn" id="run-chunk">生成 Chunk</button>
+                <button class="ghost-btn" id="run-embedding">生成 Embedding</button>
               </div>
+              <div class="mini-note">上传只更新原始文件和版本台账，后续处理需要手动点对应按钮。</div>
             </div>
           </div>
 

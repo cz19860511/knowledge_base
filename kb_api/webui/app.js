@@ -175,7 +175,9 @@ function renderRawPipeline(pipeline) {
     pill.classList.add("warn");
   }
 
-  $("raw-step").textContent = pipeline?.current_step || "-";
+  const stage = pipeline?.current_stage || pipeline?.current_step || "-";
+  const folder = pipeline?.current_folder || "-";
+  $("raw-step").textContent = folder && folder !== "-" ? `${stage} / ${folder}` : stage;
   $("raw-success").textContent = formatTime(pipeline?.last_success_at || pipeline?.finished_at);
 }
 
@@ -359,7 +361,6 @@ async function uploadRawFiles() {
 
   const form = new FormData();
   form.append("folder", folder);
-  form.append("run_pipeline", $("raw-run-pipeline").checked ? "true" : "false");
   files.forEach((file) => form.append("files", file));
 
   $("upload-raw-files").disabled = true;
@@ -373,7 +374,6 @@ async function uploadRawFiles() {
     });
     fileInput.value = "";
     await loadRawFiles(true);
-    await loadRawPipelineStatus(true);
     alert(`上传完成：新增 ${result.created_count || 0} 个，更新 ${result.updated_count || 0} 个。`);
   } catch (error) {
     alert(`上传失败：${error.message}`);
@@ -387,43 +387,48 @@ async function deleteRawFile(folder, fileName) {
   if (!requireApiKey()) {
     return;
   }
-  const ok = confirm(`确认删除 ${folder}/${fileName} 吗？删除后会触发后续重建。`);
+  const ok = confirm(`确认删除 ${folder}/${fileName} 吗？`);
   if (!ok) {
     return;
   }
 
   try {
-    const result = await fetchJson(`/raw-files?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(fileName)}&run_pipeline=true`, {
+    const result = await fetchJson(`/raw-files?folder=${encodeURIComponent(folder)}&file_name=${encodeURIComponent(fileName)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${state.apiKey}` },
     });
     await loadRawFiles(true);
-    await loadRawPipelineStatus(true);
-    alert(result.deleted ? "删除完成，已触发重建。" : "文件已从台账中移除，已触发重建。");
+    alert(result.deleted ? "删除完成。" : "文件已从台账中移除。");
   } catch (error) {
     alert(`删除失败：${error.message}`);
   }
 }
 
-async function triggerRawPipeline(force = false) {
+async function runRawStage(stage, buttonId, runningText) {
   if (!requireApiKey()) {
     return;
   }
 
-  $("trigger-pipeline").disabled = true;
-  $("trigger-pipeline").textContent = force ? "强制重建中..." : "重建中...";
+  const folder = $("raw-folder").value;
+  if (!folder) {
+    alert("先选择一个原始目录。");
+    return;
+  }
+  const button = $(buttonId);
+  button.disabled = true;
+  button.textContent = runningText;
 
   try {
-    await fetchJson(`/raw-files/pipeline?force=${force ? "true" : "false"}`, {
+    await fetchJson(`/raw-files/pipeline?stage=${encodeURIComponent(stage)}&folder=${encodeURIComponent(folder)}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${state.apiKey}` },
     });
     await loadRawPipelineStatus(true);
   } catch (error) {
-    alert(`重建失败：${error.message}`);
+    alert(`${runningText}失败：${error.message}`);
   } finally {
-    $("trigger-pipeline").disabled = false;
-    $("trigger-pipeline").textContent = "手动重建";
+    button.disabled = false;
+    button.textContent = buttonId === "run-preprocess" ? "预处理" : buttonId === "run-chunk" ? "生成 Chunk" : "生成 Embedding";
   }
 }
 
@@ -436,7 +441,9 @@ function bindEvents() {
     await loadRawFiles();
     await loadRawPipelineStatus(true);
   });
-  $("trigger-pipeline").addEventListener("click", () => triggerRawPipeline(false));
+  $("run-preprocess").addEventListener("click", () => runRawStage("preprocess", "run-preprocess", "预处理"));
+  $("run-chunk").addEventListener("click", () => runRawStage("chunk", "run-chunk", "生成 Chunk"));
+  $("run-embedding").addEventListener("click", () => runRawStage("embedding", "run-embedding", "生成 Embedding"));
   $("save-key").addEventListener("click", async () => {
     state.apiKey = $("api-key").value.trim();
     localStorage.setItem("kb_api_key", state.apiKey);

@@ -111,7 +111,9 @@ class RawDeleteResponse(BaseModel):
 class RawPipelineStatus(BaseModel):
     running: bool = False
     state: str = "idle"
+    current_stage: str = ""
     current_step: str = ""
+    current_folder: str = ""
     run_id: str = ""
     trigger_reason: str = ""
     started_at: str = ""
