@@ -77,6 +77,8 @@ docker compose -f docker-compose.ecs.yml --profile embedding up -d --build
 | `kb-api` | `9091` | 直连调试入口 |
 | `embedding-service` | `9100` | bge-small embedding 服务 |
 
+`http://<ECS-IP>:9090/` 现在同时承载知识平台 WebUI 首页和原始文件管理页。
+
 ### 4.1 如果要启用 HTTPS
 
 - 先把域名解析到 ECS 公网 IP。
@@ -92,6 +94,8 @@ curl http://127.0.0.1:9091/health
 curl http://127.0.0.1:9090/health
 curl http://8.161.227.173:9090/health
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:9091/knowledge-bases
+curl -H "Authorization: Bearer change-me" http://127.0.0.1:9091/raw-files
+curl -H "Authorization: Bearer change-me" http://127.0.0.1:9091/raw-files/pipeline
 ```
 
 embedding 实测：

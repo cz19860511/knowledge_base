@@ -11,8 +11,8 @@ from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-ROOT = Path("/Users/chenzhuo/hb/knowledge_base")
-BATCH_ID = "batch_20260521"
+ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
+BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
 CHUNKS_JSONL = ROOT / "chunks" / BATCH_ID / "chunks.jsonl"
 VECTORS_ROOT = ROOT / "vectors" / BATCH_ID
 RAG_ROOT = ROOT / "rag" / BATCH_ID

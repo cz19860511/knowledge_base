@@ -1,18 +1,32 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .rag import load_chunks, search
+from .raw_store import delete_raw_file, get_pipeline_status, list_raw_files, save_uploaded_files, start_pipeline
 from .schemas import (
     KnowledgeBaseItem,
     KnowledgeBaseListResponse,
+    RawDeleteResponse,
+    RawFileListResponse,
+    RawPipelineResponse,
+    RawPipelineStatus,
+    RawUploadResponse,
     RetrieveRequest,
     RetrieveResponse,
 )
 
 
 app = FastAPI(title="kb-api", version="0.1.0")
+WEBUI_DIR = Path(__file__).resolve().parent / "webui"
+
+if WEBUI_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=WEBUI_DIR), name="webui-assets")
 
 
 def require_api_key(authorization: str | None = Header(default=None)) -> None:
@@ -32,7 +46,14 @@ def health() -> dict:
         "knowledge_base_id": settings.knowledge_base_id,
         "batch_id": settings.batch_id,
         "retrieval_mode": settings.retrieval_mode,
+        "embedding_model": settings.embedding_model_name,
     }
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/ui", include_in_schema=False)
+def webui() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "index.html")
 
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse, dependencies=[Depends(require_api_key)])
@@ -69,6 +90,57 @@ def retrieve(req: RetrieveRequest) -> RetrieveResponse:
         ],
         total=len(hits),
     )
+
+
+@app.get("/raw-files", response_model=RawFileListResponse, dependencies=[Depends(require_api_key)])
+def raw_files(include_deleted: bool = Query(default=False)) -> RawFileListResponse:
+    payload = list_raw_files(include_deleted=include_deleted)
+    return RawFileListResponse(**payload)
+
+
+@app.post("/raw-files/upload", response_model=RawUploadResponse, dependencies=[Depends(require_api_key)])
+def upload_raw_files(
+    folder: str = Form(...),
+    files: list[UploadFile] = File(...),
+    run_pipeline: bool = Form(default=True),
+) -> RawUploadResponse:
+    payload = save_uploaded_files(folder=folder, uploads=files)
+    pipeline_status = None
+    pipeline_started = False
+    if run_pipeline:
+        pipeline_status = start_pipeline(trigger_reason=f"upload:{folder}")
+        pipeline_started = bool(pipeline_status.get("running"))
+    return RawUploadResponse(
+        **payload,
+        pipeline_started=pipeline_started,
+        pipeline_status=pipeline_status,
+    )
+
+
+@app.delete("/raw-files", response_model=RawDeleteResponse, dependencies=[Depends(require_api_key)])
+def remove_raw_file(
+    folder: str = Query(...),
+    file_name: str = Query(...),
+    run_pipeline: bool = Query(default=True),
+) -> RawDeleteResponse:
+    payload = delete_raw_file(folder=folder, file_name=file_name)
+    if run_pipeline:
+        start_pipeline(trigger_reason=f"delete:{folder}")
+    return RawDeleteResponse(**payload)
+
+
+@app.get("/raw-files/pipeline", response_model=RawPipelineStatus, dependencies=[Depends(require_api_key)])
+def raw_pipeline_status() -> RawPipelineStatus:
+    return RawPipelineStatus(**get_pipeline_status())
+
+
+@app.post("/raw-files/pipeline", response_model=RawPipelineResponse, dependencies=[Depends(require_api_key)])
+def trigger_raw_pipeline(force: bool = Query(default=False)) -> RawPipelineResponse:
+    status = get_pipeline_status()
+    if status.get("running") and not force:
+        return RawPipelineResponse(started=False, status=RawPipelineStatus(**status))
+    started_status = start_pipeline(trigger_reason="manual" if not force else "manual_force")
+    return RawPipelineResponse(started=bool(started_status.get("running")), status=RawPipelineStatus(**started_status))
 
 
 if __name__ == "__main__":

@@ -40,6 +40,16 @@ def main():
     print(status)
     print(body)
 
+    status, body = request_json("GET", "/raw-files")
+    print("__RAW_LIST__")
+    print(status)
+    print(body)
+
+    status, body = request_json("GET", "/raw-files/pipeline")
+    print("__RAW_PIPELINE__")
+    print(status)
+    print(body)
+
     payload = {
         "knowledge_base_ids": ["ai_qna_standard_v1"],
         "query": "安全生产责任制的主要要求是什么",

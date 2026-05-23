@@ -30,6 +30,7 @@ services:
       - .env
     environment:
       KB_ROOT_DIR: /data/kb
+      KB_EMBEDDING_MODEL_NAME: bge-small-zh-v1.5
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
       - /data/kb/chunks:/data/kb/chunks:ro

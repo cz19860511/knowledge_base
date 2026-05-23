@@ -57,3 +57,71 @@ class RetrieveHit(BaseModel):
 class RetrieveResponse(BaseModel):
     total: int
     search_result_list: list[RetrieveHit]
+
+
+class RawFileVersion(BaseModel):
+    version: str
+    uploaded_at: str
+    size_bytes: int = 0
+    checksum: str | None = None
+
+
+class RawFileItem(BaseModel):
+    raw_key: str
+    folder: str
+    file_name: str
+    relative_path: str
+    file_path: str
+    exists: bool = True
+    deleted: bool = False
+    version: str = "v1"
+    version_count: int = 1
+    upload_time: str = ""
+    updated_at: str = ""
+    size_bytes: int = 0
+    checksum: str | None = None
+    history: list[RawFileVersion] = Field(default_factory=list)
+
+
+class RawFileListResponse(BaseModel):
+    total: int
+    allowed_folders: list[str]
+    raw_file_list: list[RawFileItem]
+
+
+class RawUploadItem(BaseModel):
+    action: str
+    item: RawFileItem
+
+
+class RawUploadResponse(BaseModel):
+    uploaded_count: int
+    created_count: int
+    updated_count: int
+    items: list[RawFileItem]
+    pipeline_started: bool = False
+    pipeline_status: dict | None = None
+
+
+class RawDeleteResponse(BaseModel):
+    deleted: bool
+    item: RawFileItem
+
+
+class RawPipelineStatus(BaseModel):
+    running: bool = False
+    state: str = "idle"
+    current_step: str = ""
+    run_id: str = ""
+    trigger_reason: str = ""
+    started_at: str = ""
+    updated_at: str = ""
+    finished_at: str = ""
+    last_success_at: str = ""
+    last_error: str = ""
+    exit_code: int | None = None
+
+
+class RawPipelineResponse(BaseModel):
+    started: bool = False
+    status: RawPipelineStatus

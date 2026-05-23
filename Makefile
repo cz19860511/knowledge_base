@@ -14,9 +14,15 @@ check:
 		kb_api/config.py \
 		kb_api/main.py \
 		kb_api/rag.py \
+		kb_api/raw_store.py \
 		kb_api/schemas.py \
 		scripts/build_hybrid_vectors.py \
-		scripts/search_hybrid_vectors.py
+		scripts/build_selected_and_chunks.py \
+		scripts/build_vectors.py \
+		scripts/preprocess_raw_02_07.py \
+		scripts/rag_answer.py \
+		scripts/search_hybrid_vectors.py \
+		scripts/search_vectors.py
 
 build-hybrid:
 	$(PYTHON) scripts/build_hybrid_vectors.py

@@ -24,6 +24,7 @@ services:
       KB_BATCH_ID: batch_20260521
       KB_KB_ID: ai_qna_standard_v1
       KB_API_KEY: change-me
+      KB_EMBEDDING_MODEL_NAME: mock-zh-384
       KB_EMBEDDING_SERVICE_URL: http://embedding-service:9100
     volumes:
       - ../chunks:/data/kb/chunks:ro

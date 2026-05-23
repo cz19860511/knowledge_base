@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Workbook, SpreadsheetFile } from "@oai/artifact-tool";
 
-const ROOT = "/Users/chenzhuo/hb/knowledge_base";
+const ROOT = process.env.KB_ROOT_DIR || "/Users/chenzhuo/hb/knowledge_base";
 const INPUT_JSON = "/private/tmp/raw_inventory_rows.json";
 const OUTPUT_DIR = path.join(ROOT, "outputs");
 const OUTPUT_FILE = path.join(OUTPUT_DIR, "标准化体系_分类版_文件清单.xlsx");

@@ -11,8 +11,8 @@ import joblib
 from scipy import sparse
 
 
-ROOT = Path("/Users/chenzhuo/hb/knowledge_base")
-BATCH_ID = "batch_20260521"
+ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
+BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
 VECTORS_ROOT = ROOT / "vectors" / BATCH_ID
 CHUNKS_JSONL = ROOT / "chunks" / BATCH_ID / "chunks.jsonl"
 

@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Workbook, SpreadsheetFile } from "@oai/artifact-tool";
 
-const ROOT = "/Users/chenzhuo/hb/knowledge_base";
-const BATCH_ID = "batch_20260521";
+const ROOT = process.env.KB_ROOT_DIR || "/Users/chenzhuo/hb/knowledge_base";
+const BATCH_ID = process.env.KB_BATCH_ID || "batch_20260521";
 const CHUNKS_ROOT = path.join(ROOT, "chunks", BATCH_ID);
 const OUTPUT_DIR = path.join(ROOT, "outputs", "chunk_preview_batch_20260521");
 const OUTPUT_FILE = path.join(OUTPUT_DIR, "chunks_preview.xlsx");

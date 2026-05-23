@@ -14,11 +14,11 @@ from typing import Iterable
 from markitdown import MarkItDown
 
 
-ROOT = Path("/Users/chenzhuo/hb/knowledge_base")
+ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
 RAW_ROOT = ROOT / "raw" / "标准化体系_分类版"
 STAGING_ROOT = ROOT / "staging" / "raw_02_07"
 WORKING_ROOT = ROOT / "working"
-BATCH_ID = "batch_20260521"
+BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
 MINERU_OUT = WORKING_ROOT / "parsed" / BATCH_ID / "mineru"
 MARKITDOWN_OUT = WORKING_ROOT / "parsed" / BATCH_ID / "markitdown_docx"
 EVAL_OUT = WORKING_ROOT / "evaluation" / BATCH_ID

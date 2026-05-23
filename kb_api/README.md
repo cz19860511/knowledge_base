@@ -5,8 +5,14 @@
 ## 接口
 
 - `GET /health`
+- `GET /` 或 `GET /ui`
 - `GET /knowledge-bases`
 - `POST /knowledge-bases/retrieve`
+- `GET /raw-files`
+- `POST /raw-files/upload`
+- `DELETE /raw-files`
+- `GET /raw-files/pipeline`
+- `POST /raw-files/pipeline`
 
 ## 本地运行
 
@@ -26,7 +32,7 @@ docker compose -f knowledge_base/kb_api/docker-compose.yml up --build
 
 ## ECS 对外端口
 
-- `http://<ECS-IP>:9090` -> `nginx`
+- `http://<ECS-IP>:9090` -> `nginx`，同样也是 WebUI 首页和原始文件管理入口
 - `http://<ECS-IP>:9091` -> `kb-api`
 
 ## 说明

@@ -9,6 +9,7 @@
 - Hybrid 检索：关键词 TF-IDF + dense embedding 融合。
 - 检索策略增强：查询扩展、业务实体强召回、规则加权。
 - API 服务：`kb-api` 对外适配 AgentArts `General` 接口。
+- `9090` 同时作为知识平台 WebUI 首页，可直接查看状态、原始文件管理和检索结果。
 - 独立 embedding 服务：`embedding_service` 支持中文 embedding 模型独立部署。
 
 ## 仓库结构

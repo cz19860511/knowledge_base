@@ -11,6 +11,7 @@ class Settings:
     batch_id: str = os.getenv("KB_BATCH_ID", "batch_20260521")
     knowledge_base_id: str = os.getenv("KB_KB_ID", "ai_qna_standard_v1")
     api_key: str = os.getenv("KB_API_KEY", "change-me")
+    embedding_model_name: str = os.getenv("KB_EMBEDDING_MODEL_NAME", "bge-small-zh-v1.5")
     host: str = os.getenv("KB_HOST", "0.0.0.0")
     port: int = int(os.getenv("KB_PORT", "8080"))
     top_k_default: int = int(os.getenv("KB_TOP_K_DEFAULT", "5"))
@@ -27,6 +28,26 @@ class Settings:
     @property
     def chunks_jsonl(self) -> Path:
         return self.root_dir / "chunks" / self.batch_id / "chunks.jsonl"
+
+    @property
+    def raw_source_root(self) -> Path:
+        return self.root_dir / "raw" / "标准化体系_分类版"
+
+    @property
+    def operations_dir(self) -> Path:
+        return self.root_dir / "operations"
+
+    @property
+    def raw_manifest_path(self) -> Path:
+        return self.operations_dir / "raw_manifest.json"
+
+    @property
+    def raw_pipeline_status_path(self) -> Path:
+        return self.operations_dir / "raw_pipeline_status.json"
+
+    @property
+    def raw_pipeline_log_path(self) -> Path:
+        return self.operations_dir / "raw_pipeline.log"
 
     @property
     def vector_db(self) -> Path:

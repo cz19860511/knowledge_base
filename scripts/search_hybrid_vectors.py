@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path("/Users/chenzhuo/hb/knowledge_base")
+ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
 os.environ.setdefault("KB_ROOT_DIR", str(ROOT))
 sys.path.insert(0, str(ROOT))
 

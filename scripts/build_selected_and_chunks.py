@@ -10,14 +10,14 @@ from pathlib import Path
 from typing import Iterable
 
 
-ROOT = Path("/Users/chenzhuo/hb/knowledge_base")
+ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
 WORKING_ROOT = ROOT / "working"
 SELECTED_ROOT = ROOT / "selected"
 CHUNKS_ROOT = ROOT / "chunks"
 EVAL_ROOT = WORKING_ROOT / "evaluation"
 MINERU_OUT = WORKING_ROOT / "parsed"
 MARKITDOWN_OUT = WORKING_ROOT / "parsed"
-BATCH_ID = "batch_20260521"
+BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
 
 RAW_BATCH_ROOT = ROOT / "raw" / "标准化体系_分类版"
 PARSE_SUMMARY = EVAL_ROOT / BATCH_ID / "parse_summary.json"
