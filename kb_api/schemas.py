@@ -18,6 +18,40 @@ class KnowledgeBaseListResponse(BaseModel):
     knowledge_base_list: list[KnowledgeBaseItem]
 
 
+class KnowledgeBaseRegistryItem(BaseModel):
+    knowledge_base_id: str
+    name: str
+    description: str | None = None
+    owner: str | None = None
+    status: str = "active"
+    root_dir: str | None = None
+    default_batch_id: str | None = None
+    doc_count: int = 0
+    chunk_count: int = 0
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class KnowledgeBaseRegistryResponse(BaseModel):
+    version: int = 1
+    active_knowledge_base_id: str = ""
+    items: list[KnowledgeBaseRegistryItem]
+    registry_path: str = ""
+    updated_at: str = ""
+
+
+class KnowledgeBaseRegistryUpsertRequest(BaseModel):
+    knowledge_base_id: str
+    name: str
+    description: str | None = None
+    owner: str | None = None
+    status: str = "active"
+    root_dir: str | None = None
+    default_batch_id: str | None = None
+    doc_count: int = 0
+    chunk_count: int = 0
+
+
 class RetrieveExtraParam(BaseModel):
     key: str
     value: str

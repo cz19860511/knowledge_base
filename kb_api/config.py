@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from knowledge_base_paths import get_knowledge_base_root
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -27,15 +29,15 @@ class Settings:
 
     @property
     def chunks_jsonl(self) -> Path:
-        return self.root_dir / "chunks" / self.batch_id / "chunks.jsonl"
+        return get_knowledge_base_root(self.root_dir) / "chunks" / self.batch_id / "chunks.jsonl"
 
     @property
     def raw_source_root(self) -> Path:
-        return self.root_dir / "raw" / "标准化体系_分类版"
+        return get_knowledge_base_root(self.root_dir) / "raw" / "标准化体系_分类版"
 
     @property
     def operations_dir(self) -> Path:
-        return self.root_dir / "operations"
+        return get_knowledge_base_root(self.root_dir) / "operations"
 
     @property
     def raw_manifest_path(self) -> Path:
@@ -43,7 +45,7 @@ class Settings:
 
     @property
     def raw_versions_root(self) -> Path:
-        return self.root_dir / "raw_versions"
+        return get_knowledge_base_root(self.root_dir) / "raw_versions"
 
     @property
     def raw_pipeline_status_path(self) -> Path:
@@ -55,41 +57,41 @@ class Settings:
 
     @property
     def vector_db(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "vector_index.sqlite"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "vector_index.sqlite"
 
     @property
     def vectorizer_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "vectorizer.joblib"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "vectorizer.joblib"
 
     @property
     def vector_matrix_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "vector_matrix.npz"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "vector_matrix.npz"
 
     @property
     def keyword_vectorizer_path(self) -> Path:
-        path = self.root_dir / "vectors" / self.batch_id / "keyword_vectorizer.joblib"
+        path = get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "keyword_vectorizer.joblib"
         return path if path.exists() else self.vectorizer_path
 
     @property
     def keyword_matrix_path(self) -> Path:
-        path = self.root_dir / "vectors" / self.batch_id / "keyword_matrix.npz"
+        path = get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "keyword_matrix.npz"
         return path if path.exists() else self.vector_matrix_path
 
     @property
     def embedding_matrix_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "embedding_matrix.npy"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "embedding_matrix.npy"
 
     @property
     def embedding_model_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "embedding_model.joblib"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "embedding_model.joblib"
 
     @property
     def manifest_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "vector_manifest.json"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "vector_manifest.json"
 
     @property
     def hybrid_manifest_path(self) -> Path:
-        return self.root_dir / "vectors" / self.batch_id / "hybrid_manifest.json"
+        return get_knowledge_base_root(self.root_dir) / "vectors" / self.batch_id / "hybrid_manifest.json"
 
 
 settings = Settings()

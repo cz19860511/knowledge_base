@@ -238,8 +238,16 @@ def _record_version(
 
 def _build_item(path: Path, entry: dict | None) -> dict:
     stat = path.stat()
-    relative = path.relative_to(settings.raw_source_root)
-    folder = relative.parts[0] if relative.parts else path.parent.name
+    active_root = settings.raw_source_root
+    try:
+        relative = path.resolve().relative_to(active_root.resolve())
+    except ValueError:
+        relative = None
+
+    if relative and relative.parts:
+        folder = relative.parts[0]
+    else:
+        folder = next((part for part in path.parts if part in ALLOWED_FOLDERS), path.parent.name)
     file_name = path.name
     rel_key = _manifest_key(folder, file_name)
     history = _entry_history(entry or {})

@@ -12,6 +12,7 @@ from scipy import sparse
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
+from knowledge_base_paths import get_knowledge_base_root
 
 from build_vectors import (
     BATCH_ID,

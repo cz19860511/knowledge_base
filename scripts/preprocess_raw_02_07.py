@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Iterable
 
 from markitdown import MarkItDown
+from knowledge_base_paths import get_knowledge_base_root
 from pipeline_config import DEFAULT_PIPELINE_CONFIG, load_pipeline_config
 
 
-ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
+ROOT = get_knowledge_base_root(Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base")))
 RAW_ROOT = ROOT / "raw" / "标准化体系_分类版"
 STAGING_ROOT = ROOT / "staging" / "raw_02_07"
 WORKING_ROOT = ROOT / "working"

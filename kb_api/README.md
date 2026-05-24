@@ -6,9 +6,14 @@
 
 - `GET /health`
 - `GET /` 或 `GET /ui`
+- `GET /knowledge-base-manager-ui`
 - `GET /pipeline-config-ui`
 - `GET /knowledge-bases`
 - `POST /knowledge-bases/retrieve`
+- `GET /knowledge-base-registry`
+- `POST /knowledge-base-registry`
+- `PUT /knowledge-base-registry/{knowledge_base_id}`
+- `DELETE /knowledge-base-registry/{knowledge_base_id}`
 - `GET /pipeline-config`
 - `PUT /pipeline-config`
 - `GET /raw-files`
@@ -45,5 +50,6 @@ docker compose -f knowledge_base/kb_api/docker-compose.yml up --build
 - 检索策略已支持查询扩展和业务实体强召回，当前重点覆盖危化品车辆、拥堵疏导、违规收银、设备巡检、消防检查等场景。
 - 当前推荐索引使用 `bge-small-zh-v1.5` 重新建库；如 embedding 服务不可用，`kb-api` 会自动降级到关键词检索和规则增强。
 - `pipeline_config.json` 会保存在 `/data/kb/operations/`，WebUI 的“流程配置”页面会直接读写这份文件。
+- `knowledge_bases.json` 会保存在 `/data/kb/operations/`，WebUI 的“知识库管理”页面会直接读写这份文件。
 - 重新建库可执行：`python /Users/chenzhuo/hb/knowledge_base/scripts/build_hybrid_vectors.py`。
 - 中文 embedding 服务说明见：[embedding-service README](/Users/chenzhuo/hb/knowledge_base/embedding_service/README.md)。

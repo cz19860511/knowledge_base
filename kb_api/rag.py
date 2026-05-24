@@ -13,12 +13,16 @@ from sklearn.preprocessing import normalize
 
 from .config import settings
 from .retrieval_rules import RetrievalRule, expanded_query, match_rules
+from knowledge_base_paths import get_active_knowledge_base_id, get_knowledge_base_root
 
 
-@lru_cache(maxsize=1)
-def load_chunks() -> list[dict]:
+@lru_cache(maxsize=8)
+def _load_chunks_for(knowledge_base_id: str) -> list[dict]:
     rows: list[dict] = []
-    with settings.chunks_jsonl.open("r", encoding="utf-8") as f:
+    chunks_path = get_knowledge_base_root(settings.root_dir, knowledge_base_id) / "chunks" / settings.batch_id / "chunks.jsonl"
+    if not chunks_path.exists():
+        return rows
+    with chunks_path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -26,28 +30,62 @@ def load_chunks() -> list[dict]:
     return rows
 
 
-@lru_cache(maxsize=1)
+def load_chunks() -> list[dict]:
+    return _load_chunks_for(get_active_knowledge_base_id(settings.root_dir))
+
+
+@lru_cache(maxsize=8)
+def _load_vectorizer_for(knowledge_base_id: str):
+    base = get_knowledge_base_root(settings.root_dir, knowledge_base_id)
+    path = base / "vectors" / settings.batch_id / "keyword_vectorizer.joblib"
+    if not path.exists():
+        path = base / "vectors" / settings.batch_id / "vectorizer.joblib"
+    if not path.exists():
+        return None
+    return joblib.load(path)
+
+
 def load_vectorizer():
-    return joblib.load(settings.keyword_vectorizer_path)
+    return _load_vectorizer_for(get_active_knowledge_base_id(settings.root_dir))
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
+def _load_matrix_for(knowledge_base_id: str):
+    base = get_knowledge_base_root(settings.root_dir, knowledge_base_id)
+    path = base / "vectors" / settings.batch_id / "keyword_matrix.npz"
+    if not path.exists():
+        path = base / "vectors" / settings.batch_id / "vector_matrix.npz"
+    if not path.exists():
+        return sparse.csr_matrix((0, 0))
+    return sparse.load_npz(path)
+
+
 def load_matrix():
-    return sparse.load_npz(settings.keyword_matrix_path)
+    return _load_matrix_for(get_active_knowledge_base_id(settings.root_dir))
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
+def _load_embedding_matrix_for(knowledge_base_id: str):
+    path = get_knowledge_base_root(settings.root_dir, knowledge_base_id) / "vectors" / settings.batch_id / "embedding_matrix.npy"
+    if not path.exists():
+        return None
+    return np.load(path)
+
+
 def load_embedding_matrix():
-    if not settings.embedding_matrix_path.exists():
+    return _load_embedding_matrix_for(get_active_knowledge_base_id(settings.root_dir))
+
+
+@lru_cache(maxsize=8)
+def _load_embedding_model_for(knowledge_base_id: str):
+    path = get_knowledge_base_root(settings.root_dir, knowledge_base_id) / "vectors" / settings.batch_id / "embedding_model.joblib"
+    if not path.exists():
         return None
-    return np.load(settings.embedding_matrix_path)
+    return joblib.load(path)
 
 
-@lru_cache(maxsize=1)
 def load_embedding_model():
-    if not settings.embedding_model_path.exists():
-        return None
-    return joblib.load(settings.embedding_model_path)
+    return _load_embedding_model_for(get_active_knowledge_base_id(settings.root_dir))
 
 
 def load_metadata(chunk_ids: list[str]) -> dict[str, dict]:
@@ -225,6 +263,8 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
     vectorizer = load_vectorizer()
     matrix = load_matrix()
     chunks = load_chunks()
+    if not chunks or vectorizer is None or matrix.shape[0] == 0 or matrix.shape[1] == 0:
+        return []
 
     rules = match_rules(query) if settings.query_expansion_enabled else []
     keyword_query = expanded_query(query, rules) if settings.query_expansion_enabled else query
@@ -256,7 +296,7 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
         meta = metadata.get(row["chunk_id"], {})
         result.append(
             {
-                "knowledge_base_id": settings.knowledge_base_id,
+                "knowledge_base_id": get_active_knowledge_base_id(settings.root_dir),
                 "file_id": row["doc_id"],
                 "chunk_id": row["chunk_id"],
                 "title": f"{row.get('doc_type', '')} / {row.get('folder', '')} / {row.get('section_path', '')}".strip(" /"),

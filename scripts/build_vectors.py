@@ -11,9 +11,10 @@ from pathlib import Path
 import joblib
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
+from knowledge_base_paths import get_knowledge_base_root
 
 
-ROOT = Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base"))
+ROOT = get_knowledge_base_root(Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base")))
 BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
 CHUNKS_JSONL = ROOT / "chunks" / BATCH_ID / "chunks.jsonl"
 VECTORS_ROOT = ROOT / "vectors" / BATCH_ID

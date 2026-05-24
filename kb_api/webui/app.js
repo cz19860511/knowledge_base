@@ -8,6 +8,7 @@ const state = {
   rawPipeline: null,
   rawExpandedHistory: new Set(),
   pipelineConfig: null,
+  registry: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -49,6 +50,7 @@ function setHealthPill(status) {
 
 function renderHealth(data) {
   setText("kb-id", data.knowledge_base_id || "-");
+  setText("active-kb-id", data.active_knowledge_base_id || data.knowledge_base_id || "-");
   setText("batch-id", data.batch_id || "-");
   setText("retrieval-mode", data.retrieval_mode || "-");
   setText("embed-model", data.embedding_model || "bge-small-zh-v1.5");
@@ -179,6 +181,100 @@ function renderKnowledgeBases(items) {
       `,
     )
     .join("");
+}
+
+function renderKnowledgeBaseRegistry(payload) {
+  state.registry = payload;
+  const pill = el("registry-pill");
+  if (pill) {
+    pill.textContent = payload?.active_knowledge_base_id ? `当前：${payload.active_knowledge_base_id}` : "未加载";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add("ok");
+  }
+  setText("registry-path", payload?.registry_path || "-");
+  setText("registry-save-state", payload?.updated_at ? `已保存 ${formatTime(payload.updated_at)}` : "未保存");
+
+  const body = el("registry-table");
+  if (!body) return;
+
+  const items = payload?.items || [];
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="6" class="placeholder">注册表为空</td></tr>';
+    return;
+  }
+
+  body.innerHTML = items
+    .map((item) => {
+      const isActive = item.knowledge_base_id === payload?.active_knowledge_base_id;
+      const statusPill = isActive ? "当前" : item.status || "-";
+      const rootDir = item.root_dir || "-";
+      const counts = `${item.doc_count ?? 0} / ${item.chunk_count ?? 0}`;
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.name || item.knowledge_base_id)}</strong>
+            <div class="snippet">${escapeHtml(item.knowledge_base_id)}</div>
+          </td>
+          <td>${escapeHtml(statusPill)}</td>
+          <td>${escapeHtml(rootDir)}</td>
+          <td>${escapeHtml(counts)}</td>
+          <td>${escapeHtml(formatTime(item.updated_at || item.created_at))}</td>
+          <td>
+            <div class="file-actions">
+              <button class="ghost-btn" data-registry-edit="${escapeHtml(item.knowledge_base_id)}">编辑</button>
+              <button class="ghost-btn" data-registry-initialize="${escapeHtml(item.knowledge_base_id)}">初始化目录</button>
+              <button class="ghost-btn" data-registry-activate="${escapeHtml(item.knowledge_base_id)}">设为当前</button>
+              <button class="ghost-btn danger-btn" data-registry-delete="${escapeHtml(item.knowledge_base_id)}">删除</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function resetRegistryForm() {
+  setInputValue("registry-current-id", "");
+  setText("registry-form-mode", "新建");
+  setInputValue("registry-kb-id", "");
+  setInputValue("registry-name", "");
+  setInputValue("registry-owner", "");
+  setText("registry-save-state", state.registry?.updated_at ? `已保存 ${formatTime(state.registry.updated_at)}` : "未保存");
+  setInputValue("registry-description", "");
+  setInputValue("registry-root-dir", "");
+  setInputValue("registry-default-batch-id", "");
+  setInputValue("registry-doc-count", 0);
+  setInputValue("registry-chunk-count", 0);
+  setInputValue("registry-status", "active");
+}
+
+function fillRegistryForm(item) {
+  if (!item) return;
+  setInputValue("registry-current-id", item.knowledge_base_id || "");
+  setText("registry-form-mode", "编辑");
+  setInputValue("registry-kb-id", item.knowledge_base_id || "");
+  setInputValue("registry-name", item.name || "");
+  setInputValue("registry-owner", item.owner || "");
+  setInputValue("registry-description", item.description || "");
+  setInputValue("registry-root-dir", item.root_dir || "");
+  setInputValue("registry-default-batch-id", item.default_batch_id || "");
+  setInputValue("registry-doc-count", item.doc_count ?? 0);
+  setInputValue("registry-chunk-count", item.chunk_count ?? 0);
+  setInputValue("registry-status", item.status || "active");
+}
+
+function buildRegistryPayload() {
+  return {
+    knowledge_base_id: (el("registry-kb-id")?.value || "").trim(),
+    name: (el("registry-name")?.value || "").trim(),
+    owner: (el("registry-owner")?.value || "").trim(),
+    status: (el("registry-status")?.value || "active").trim(),
+    description: (el("registry-description")?.value || "").trim(),
+    root_dir: (el("registry-root-dir")?.value || "").trim(),
+    default_batch_id: (el("registry-default-batch-id")?.value || "").trim(),
+    doc_count: Number(el("registry-doc-count")?.value || 0),
+    chunk_count: Number(el("registry-chunk-count")?.value || 0),
+  };
 }
 
 function renderResults(payload) {
@@ -570,6 +666,116 @@ async function savePipelineConfig() {
   }
 }
 
+async function loadKnowledgeBaseRegistry(silent = false) {
+  const pill = el("registry-pill");
+  if (!pill) return;
+
+  if (!state.apiKey) {
+    if (!silent) {
+      alert("先输入 API Key 再加载注册表。");
+    }
+    pill.textContent = "未加载";
+    setText("registry-save-state", "未加载");
+    return;
+  }
+
+  const data = await fetchJson("/knowledge-base-registry", {
+    headers: { Authorization: `Bearer ${state.apiKey}` },
+  });
+  data.registry_path = "/data/kb/operations/knowledge_bases.json";
+  renderKnowledgeBaseRegistry(data);
+}
+
+async function saveKnowledgeBaseRegistryItem() {
+  if (!requireApiKey()) return;
+  const payload = buildRegistryPayload();
+  if (!payload.knowledge_base_id || !payload.name) {
+    alert("知识库 ID 和名称不能为空。");
+    return;
+  }
+
+  const currentId = (el("registry-current-id")?.value || "").trim();
+  const method = currentId ? "PUT" : "POST";
+  const url = currentId ? `/knowledge-base-registry/${encodeURIComponent(currentId)}` : "/knowledge-base-registry";
+  const button = el("save-registry-item");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+
+  try {
+    const data = await fetchJson(url, {
+      method,
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+      body: JSON.stringify(payload),
+    });
+    data.registry_path = "/data/kb/operations/knowledge_bases.json";
+    renderKnowledgeBaseRegistry(data);
+    fillRegistryForm((data.items || []).find((item) => item.knowledge_base_id === payload.knowledge_base_id) || payload);
+    alert("知识库已保存。");
+  } catch (error) {
+    alert(`保存失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存知识库";
+  }
+}
+
+async function deleteKnowledgeBaseRegistryItem(kbId) {
+  if (!requireApiKey()) return;
+  const ok = confirm(`确认删除知识库 ${kbId} 吗？`);
+  if (!ok) return;
+  try {
+    const data = await fetchJson(`/knowledge-base-registry/${encodeURIComponent(kbId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    data.registry_path = "/data/kb/operations/knowledge_bases.json";
+    renderKnowledgeBaseRegistry(data);
+    resetRegistryForm();
+    await loadKnowledgeBases();
+  } catch (error) {
+    alert(`删除失败：${error.message}`);
+  }
+}
+
+async function activateKnowledgeBaseRegistryItem(kbId) {
+  if (!requireApiKey()) return;
+  const item = (state.registry?.items || []).find((row) => row.knowledge_base_id === kbId);
+  const ok = confirm(`切换到 ${kbId} 后，原始文件、流程配置和检索都会跟着当前知识库走。${item?.doc_count || item?.chunk_count ? " 当前库已有数据，继续切换？" : " 该库还没有数据，是否继续？"}`);
+  if (!ok) return;
+  try {
+    const data = await fetchJson(`/knowledge-base-registry/${encodeURIComponent(kbId)}/activate`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    data.registry_path = "/data/kb/operations/knowledge_bases.json";
+    renderKnowledgeBaseRegistry(data);
+    await loadKnowledgeBases();
+  } catch (error) {
+    alert(`设为当前失败：${error.message}`);
+  }
+}
+
+async function initializeKnowledgeBaseRegistryItem(kbId) {
+  if (!requireApiKey()) return;
+  const item = (state.registry?.items || []).find((row) => row.knowledge_base_id === kbId);
+  const ok = confirm(`初始化 ${kbId} 的目录和默认配置吗？这会创建原始文件、chunk、向量和运行目录，便于后续上传和预处理。`);
+  if (!ok) return;
+  try {
+    const data = await fetchJson(`/knowledge-base-registry/${encodeURIComponent(kbId)}/initialize`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    data.registry_path = "/data/kb/operations/knowledge_bases.json";
+    renderKnowledgeBaseRegistry(data);
+    await loadKnowledgeBases();
+    alert(`初始化完成：${item?.name || kbId}`);
+  } catch (error) {
+    alert(`初始化失败：${error.message}`);
+  }
+}
+
 async function runQuery() {
   if (!requireApiKey()) return;
   const runQueryBtn = el("run-query");
@@ -815,6 +1021,54 @@ function bindConfigEvents() {
   el("save-config")?.addEventListener("click", savePipelineConfig);
 }
 
+function bindRegistryEvents() {
+  el("save-registry-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
+    localStorage.setItem("kb_api_key", state.apiKey);
+    alert("API Key 已保存到本地浏览器。");
+    try {
+      await loadKnowledgeBaseRegistry(true);
+    } catch (error) {
+      alert(`加载注册表失败：${error.message}`);
+    }
+  });
+  el("load-registry")?.addEventListener("click", async () => {
+    await loadKnowledgeBaseRegistry();
+  });
+  el("refresh-registry")?.addEventListener("click", async () => {
+    await loadKnowledgeBaseRegistry(true);
+  });
+  el("save-registry-item")?.addEventListener("click", saveKnowledgeBaseRegistryItem);
+  el("new-registry-item")?.addEventListener("click", resetRegistryForm);
+  el("reset-registry-form")?.addEventListener("click", resetRegistryForm);
+  el("registry-table")?.addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-registry-edit]");
+    if (edit) {
+      const kbId = edit.getAttribute("data-registry-edit") || "";
+      const item = (state.registry?.items || []).find((row) => row.knowledge_base_id === kbId);
+      if (item) fillRegistryForm(item);
+      return;
+    }
+    const activate = event.target.closest("[data-registry-activate]");
+    if (activate) {
+      const kbId = activate.getAttribute("data-registry-activate") || "";
+      activateKnowledgeBaseRegistryItem(kbId);
+      return;
+    }
+    const initialize = event.target.closest("[data-registry-initialize]");
+    if (initialize) {
+      const kbId = initialize.getAttribute("data-registry-initialize") || "";
+      initializeKnowledgeBaseRegistryItem(kbId);
+      return;
+    }
+    const remove = event.target.closest("[data-registry-delete]");
+    if (remove) {
+      const kbId = remove.getAttribute("data-registry-delete") || "";
+      deleteKnowledgeBaseRegistryItem(kbId);
+    }
+  });
+}
+
 async function bootstrap() {
   const apiKeyInput = el("api-key");
   if (apiKeyInput) {
@@ -838,6 +1092,20 @@ async function bootstrap() {
       }
     } else {
       setText("config-save-state", "输入 API Key 后可加载");
+    }
+    return;
+  }
+
+  if (PAGE === "registry") {
+    bindRegistryEvents();
+    if (state.apiKey) {
+      try {
+        await loadKnowledgeBaseRegistry(true);
+      } catch {
+        setText("registry-save-state", "加载失败");
+      }
+    } else {
+      setText("registry-save-state", "输入 API Key 后可加载");
     }
     return;
   }

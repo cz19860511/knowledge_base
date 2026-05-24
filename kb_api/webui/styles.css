@@ -490,7 +490,20 @@ button,
   grid-template-columns: 1fr;
 }
 
+.registry-layout {
+  grid-template-columns: 1fr;
+}
+
 .config-panel .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.registry-auth-grid {
+  grid-template-columns: 1.4fr 2fr 1.4fr;
+  margin-bottom: 14px;
+}
+
+.registry-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -566,6 +579,11 @@ button,
     grid-template-columns: 1fr;
   }
 
+  .registry-auth-grid,
+  .registry-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .field-span-2 {
     grid-column: span 1;
   }
@@ -596,6 +614,11 @@ button,
   }
 
   .raw-auth-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .registry-auth-grid,
+  .registry-form-grid {
     grid-template-columns: 1fr;
   }
 

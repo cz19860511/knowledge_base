@@ -81,8 +81,10 @@ docker compose -f docker-compose.ecs.yml --profile embedding up -d --build
 | `embedding-service` | `9100` | bge-small embedding 服务 |
 
 `http://<ECS-IP>:9090/` 现在同时承载知识平台 WebUI 首页和原始文件管理页。
+`http://<ECS-IP>:9090/knowledge-base-manager-ui` 是知识库管理页。
 `http://<ECS-IP>:9090/pipeline-config-ui` 是流程配置页面，保存内容会写入 `/data/kb/operations/pipeline_config.json`。
 `/data/kb/raw` 需要挂载到 `kb-api` 容器，才能看到原始文件列表和版本信息。
+`/data/kb/operations/knowledge_bases.json` 是知识库注册表。
 
 ### 4.1 如果要启用 HTTPS
 

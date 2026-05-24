@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识平台 · 知识库管理</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body data-page="registry">
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Knowledge Platform</div>
+          <h1>知识库管理</h1>
+          <p class="lead">先管理知识库注册表，再逐步把原始文件、流程配置和检索链路按知识库隔离。</p>
+          <div class="mini-note">切换知识库后，原始文件、流程配置和检索都会跟着当前知识库走；新库建议先初始化目录，再开始上传资料。</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">返回首页</a>
+          <a class="ghost-link" href="/pipeline-config-ui">流程配置</a>
+          <a class="ghost-link" href="/raw-files-ui">原始文件管理</a>
+          <a class="ghost-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        </div>
+      </header>
+
+      <main class="layout registry-layout">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>注册表状态</h2>
+              <p>这里维护多知识库的基础名单、负责人、目录根路径和状态。</p>
+            </div>
+            <span class="status-pill" id="registry-pill">未加载</span>
+          </div>
+
+          <div class="form-grid registry-auth-grid">
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" placeholder="输入 `KB_API_KEY`" autocomplete="off" />
+            </label>
+            <div class="field">
+              <span>注册表文件</span>
+              <div class="config-meta" id="registry-path">-</div>
+              <div class="mini-note" id="registry-save-state">输入 API Key 后可加载</div>
+            </div>
+            <div class="field registry-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="save-registry-key">保存 Key</button>
+                <button class="ghost-btn" id="load-registry">加载注册表</button>
+                <button class="ghost-btn" id="refresh-registry">刷新注册表</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>知识库列表</h2>
+              <p>新增、编辑、初始化、停用或删除知识库条目。当前阶段先管理元数据，再逐步把目录和索引按库隔离。</p>
+            </div>
+            <button class="ghost-btn" id="new-registry-item">新建知识库</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>知识库</th>
+                  <th>状态</th>
+                  <th>根目录</th>
+                  <th>文档 / Chunk</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="registry-table">
+                <tr>
+                  <td colspan="6" class="placeholder">先加载知识库注册表</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>知识库编辑</h2>
+              <p>新增或修改知识库元数据，保存后写入注册表文件。</p>
+            </div>
+            <span class="status-pill" id="registry-form-mode">新建</span>
+          </div>
+
+          <input type="hidden" id="registry-current-id" />
+
+          <div class="form-grid registry-form-grid">
+            <label class="field">
+              <span>知识库 ID</span>
+              <input id="registry-kb-id" type="text" placeholder="例如 ai_qna_standard_v1" />
+            </label>
+            <label class="field">
+              <span>名称</span>
+              <input id="registry-name" type="text" placeholder="例如 AI+智能问答智能体标准库" />
+            </label>
+            <label class="field">
+              <span>负责人</span>
+              <input id="registry-owner" type="text" placeholder="平台负责人" />
+            </label>
+            <label class="field">
+              <span>状态</span>
+              <select id="registry-status">
+                <option value="active">active</option>
+                <option value="paused">paused</option>
+                <option value="archived">archived</option>
+              </select>
+            </label>
+            <label class="field field-span-2">
+              <span>说明</span>
+              <input id="registry-description" type="text" placeholder="这个知识库主要覆盖什么场景" />
+            </label>
+            <label class="field field-span-2">
+              <span>根目录</span>
+              <input id="registry-root-dir" type="text" placeholder="/data/kb/knowledge_bases/ai_qna_standard_v1" />
+            </label>
+            <label class="field">
+              <span>默认批次</span>
+              <input id="registry-default-batch-id" type="text" placeholder="batch_20260521" />
+            </label>
+            <label class="field">
+              <span>文档数</span>
+              <input id="registry-doc-count" type="number" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>Chunk 数</span>
+              <input id="registry-chunk-count" type="number" min="0" step="1" />
+            </label>
+          </div>
+
+          <div class="actions-row" style="margin-top: 14px;">
+            <button class="primary-btn" id="save-registry-item">保存知识库</button>
+            <button class="ghost-btn" id="reset-registry-form">重置表单</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -12,6 +12,8 @@ RUN pip install --no-cache-dir \
     -r /app/requirements-kb-api.txt
 
 COPY kb_api /app/kb_api
+COPY knowledge_base_registry.py /app/knowledge_base_registry.py
+COPY knowledge_base_paths.py /app/knowledge_base_paths.py
 COPY pipeline_config.py /app/pipeline_config.py
 
 ENV KB_ROOT_DIR=/data/kb \

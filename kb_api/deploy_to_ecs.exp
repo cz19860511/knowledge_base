@@ -44,6 +44,8 @@ login_cmd "mkdir -p /opt/kb-app/kb_api /opt/kb-app/embedding_service /opt/kb-app
 sync_dir "$root/knowledge_base/kb_api/" "/opt/kb-app/kb_api/" $host $user $pass
 sync_dir "$root/knowledge_base/embedding_service/" "/opt/kb-app/embedding_service/" $host $user $pass
 sync_dir "$root/knowledge_base/scripts/" "/opt/kb-app/scripts/" $host $user $pass
+sync_dir "$root/knowledge_base/knowledge_base_registry.py" "/opt/kb-app/" $host $user $pass
+sync_dir "$root/knowledge_base/knowledge_base_paths.py" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/pipeline_config.py" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/requirements-kb-api.txt" "/opt/kb-app/" $host $user $pass
 sync_dir "$root/knowledge_base/requirements-embedding-service.txt" "/opt/kb-app/" $host $user $pass

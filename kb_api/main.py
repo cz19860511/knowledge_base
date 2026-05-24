@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
@@ -12,6 +13,8 @@ from .raw_store import delete_raw_file, get_pipeline_status, list_raw_files, rol
 from .schemas import (
     KnowledgeBaseItem,
     KnowledgeBaseListResponse,
+    KnowledgeBaseRegistryResponse,
+    KnowledgeBaseRegistryUpsertRequest,
     RawDeleteResponse,
     RawFileListResponse,
     RawPipelineResponse,
@@ -23,7 +26,9 @@ from .schemas import (
     RetrieveRequest,
     RetrieveResponse,
 )
-from pipeline_config import get_pipeline_config_path, load_pipeline_config, save_pipeline_config
+from knowledge_base_registry import delete_registry_item, get_active_registry_item, get_registry_path, load_registry, set_active_registry_item, upsert_registry_item
+from knowledge_base_paths import ensure_knowledge_base_workspace
+from pipeline_config import DEFAULT_PIPELINE_CONFIG, get_pipeline_config_path, load_pipeline_config, normalize_pipeline_config, save_pipeline_config
 
 
 app = FastAPI(title="kb-api", version="0.1.0")
@@ -46,9 +51,11 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
 @app.get("/health")
 def health() -> dict:
     pipeline_config = load_pipeline_config(settings.root_dir)
+    active_kb = get_active_registry_item(settings.root_dir)
     return {
         "status": "ok",
-        "knowledge_base_id": settings.knowledge_base_id,
+        "knowledge_base_id": active_kb.get("knowledge_base_id", settings.knowledge_base_id),
+        "active_knowledge_base_id": active_kb.get("knowledge_base_id", settings.knowledge_base_id),
         "batch_id": settings.batch_id,
         "retrieval_mode": settings.retrieval_mode,
         "embedding_model": pipeline_config.get("embedding", {}).get("model_name", settings.embedding_model_name),
@@ -72,12 +79,38 @@ def pipeline_config_webui() -> FileResponse:
     return FileResponse(WEBUI_DIR / "pipeline-config.html")
 
 
+@app.get("/knowledge-base-manager-ui", include_in_schema=False)
+def knowledge_base_manager_webui() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "knowledge-base-manager.html")
+
+
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse, dependencies=[Depends(require_api_key)])
 def list_knowledge_bases() -> KnowledgeBaseListResponse:
     chunks = load_chunks()
-    return KnowledgeBaseListResponse(
-        total=1,
-        knowledge_base_list=[
+    registry = load_registry(settings.root_dir)
+    items: list[KnowledgeBaseItem] = []
+    for item in registry.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        kb_id = str(item.get("knowledge_base_id") or "").strip()
+        if not kb_id:
+            continue
+        doc_count = int(item.get("doc_count", 0) or 0)
+        chunk_count = int(item.get("chunk_count", 0) or 0)
+        if kb_id == registry.get("active_knowledge_base_id", settings.knowledge_base_id):
+            doc_count = len({row["doc_id"] for row in chunks})
+            chunk_count = len(chunks)
+        items.append(
+            KnowledgeBaseItem(
+                knowledge_base_id=kb_id,
+                name=str(item.get("name") or kb_id),
+                description=str(item.get("description") or ""),
+                doc_count=doc_count,
+                chunk_count=chunk_count,
+            )
+        )
+    if not items:
+        items = [
             KnowledgeBaseItem(
                 knowledge_base_id=settings.knowledge_base_id,
                 name="AI+智能问答智能体标准库",
@@ -85,13 +118,89 @@ def list_knowledge_bases() -> KnowledgeBaseListResponse:
                 doc_count=len({row["doc_id"] for row in chunks}),
                 chunk_count=len(chunks),
             )
-        ],
+        ]
+    return KnowledgeBaseListResponse(
+        total=len(items),
+        knowledge_base_list=items,
+    )
+
+
+@app.get("/knowledge-base-registry", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def get_knowledge_base_registry() -> KnowledgeBaseRegistryResponse:
+    registry = load_registry(settings.root_dir)
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
+    )
+
+
+@app.post("/knowledge-base-registry", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def create_or_update_knowledge_base_registry(req: KnowledgeBaseRegistryUpsertRequest) -> KnowledgeBaseRegistryResponse:
+    registry = upsert_registry_item(settings.root_dir, req.model_dump())
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
+    )
+
+
+@app.put("/knowledge-base-registry/{knowledge_base_id}", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def update_knowledge_base_registry(knowledge_base_id: str, req: KnowledgeBaseRegistryUpsertRequest) -> KnowledgeBaseRegistryResponse:
+    payload = req.model_dump()
+    payload["knowledge_base_id"] = knowledge_base_id
+    registry = upsert_registry_item(settings.root_dir, payload)
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
+    )
+
+
+@app.delete("/knowledge-base-registry/{knowledge_base_id}", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def delete_knowledge_base_registry(knowledge_base_id: str) -> KnowledgeBaseRegistryResponse:
+    registry = delete_registry_item(settings.root_dir, knowledge_base_id)
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
+    )
+
+
+@app.post("/knowledge-base-registry/{knowledge_base_id}/activate", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def activate_knowledge_base_registry(knowledge_base_id: str) -> KnowledgeBaseRegistryResponse:
+    registry = set_active_registry_item(settings.root_dir, knowledge_base_id)
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
+    )
+
+
+@app.post("/knowledge-base-registry/{knowledge_base_id}/initialize", response_model=KnowledgeBaseRegistryResponse, dependencies=[Depends(require_api_key)])
+def initialize_knowledge_base_registry(knowledge_base_id: str) -> KnowledgeBaseRegistryResponse:
+    registry = load_registry(settings.root_dir)
+    item = next((row for row in registry.get("items", []) if row.get("knowledge_base_id") == knowledge_base_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"knowledge base not found: {knowledge_base_id}")
+
+    paths = ensure_knowledge_base_workspace(settings.root_dir, knowledge_base_id)
+    config_path = paths["operations_dir"] / "pipeline_config.json"
+    if not config_path.exists():
+        config_path.write_text(
+            json.dumps(normalize_pipeline_config(DEFAULT_PIPELINE_CONFIG), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    payload = dict(item)
+    payload["doc_count"] = int(item.get("doc_count", 0) or 0)
+    payload["chunk_count"] = int(item.get("chunk_count", 0) or 0)
+    registry = upsert_registry_item(settings.root_dir, payload)
+    return KnowledgeBaseRegistryResponse(
+        **registry,
+        registry_path=str(get_registry_path(settings.root_dir)),
     )
 
 
 @app.post("/knowledge-bases/retrieve", response_model=RetrieveResponse, dependencies=[Depends(require_api_key)])
 def retrieve(req: RetrieveRequest) -> RetrieveResponse:
-    if req.knowledge_base_ids and settings.knowledge_base_id not in req.knowledge_base_ids:
+    active_kb_id = get_active_registry_item(settings.root_dir).get("knowledge_base_id", settings.knowledge_base_id)
+    if req.knowledge_base_ids and active_kb_id not in req.knowledge_base_ids:
         return RetrieveResponse(total=0, search_result_list=[])
     top_k = req.top_k or settings.top_k_default
     threshold = req.search_threshold if req.search_threshold is not None else settings.search_threshold

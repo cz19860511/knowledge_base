@@ -28,6 +28,8 @@ rsync -avz -e "ssh -p ${SSH_PORT}" \
   "${PROJECT_ROOT}/kb_api" \
   "${PROJECT_ROOT}/embedding_service" \
   "${PROJECT_ROOT}/scripts" \
+  "${PROJECT_ROOT}/knowledge_base_registry.py" \
+  "${PROJECT_ROOT}/knowledge_base_paths.py" \
   "${PROJECT_ROOT}/pipeline_config.py" \
   "${PROJECT_ROOT}/requirements-kb-api.txt" \
   "${PROJECT_ROOT}/requirements-embedding-service.txt" \

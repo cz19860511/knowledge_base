@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from knowledge_base_paths import get_knowledge_base_root
+
 
 AVAILABLE_FOLDERS = [
     "02规章制度与标准规范",
@@ -47,7 +49,7 @@ DEFAULT_PIPELINE_CONFIG: dict[str, Any] = {
 
 
 def get_pipeline_config_path(root_dir: Path | str) -> Path:
-    return Path(root_dir) / "operations" / "pipeline_config.json"
+    return get_knowledge_base_root(root_dir) / "operations" / "pipeline_config.json"
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
