@@ -12,10 +12,12 @@ import joblib
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from knowledge_base_paths import get_knowledge_base_root
+from kb_api.asset_manifest import record_asset_version
 
 
 ROOT = get_knowledge_base_root(Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base")))
 BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
+KB_ID = os.getenv("KB_KB_ID", "ai_qna_standard_v1")
 CHUNKS_JSONL = ROOT / "chunks" / BATCH_ID / "chunks.jsonl"
 VECTORS_ROOT = ROOT / "vectors" / BATCH_ID
 RAG_ROOT = ROOT / "rag" / BATCH_ID
@@ -252,6 +254,72 @@ def main() -> None:
     metadata_csv = write_metadata_csv(rows)
     manifest_path = write_vector_manifest(rows, matrix)
     summary_path = build_rag_summary(rows, matrix)
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_matrix",
+        stage="vectors",
+        logical_path=f"vectors/{BATCH_ID}/vector_matrix.npz",
+        file_path=str(VECTORS_ROOT / "vector_matrix.npz"),
+        size_bytes=(VECTORS_ROOT / "vector_matrix.npz").stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows), "matrix_shape": [matrix.shape[0], matrix.shape[1]]},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vectorizer",
+        stage="vectors",
+        logical_path=f"vectors/{BATCH_ID}/vectorizer.joblib",
+        file_path=str(VECTORS_ROOT / "vectorizer.joblib"),
+        size_bytes=(VECTORS_ROOT / "vectorizer.joblib").stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_index_sqlite",
+        stage="vectors",
+        logical_path=f"vectors/{BATCH_ID}/vector_index.sqlite",
+        file_path=str(sqlite_path),
+        size_bytes=sqlite_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_metadata_csv",
+        stage="vectors",
+        logical_path=f"vectors/{BATCH_ID}/vector_metadata.csv",
+        file_path=str(metadata_csv),
+        size_bytes=metadata_csv.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_manifest_json",
+        stage="vectors",
+        logical_path=f"vectors/{BATCH_ID}/vector_manifest.json",
+        file_path=str(manifest_path),
+        size_bytes=manifest_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_build_summary_md",
+        stage="vectors",
+        logical_path=f"rag/{BATCH_ID}/vector_build_summary.md",
+        file_path=str(summary_path),
+        size_bytes=summary_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
 
     package = {
         "batch_id": BATCH_ID,
@@ -263,7 +331,19 @@ def main() -> None:
         },
         "summary": str(summary_path),
     }
-    (PACKAGES_ROOT / "vector_package.json").write_text(json.dumps(package, ensure_ascii=False, indent=2), encoding="utf-8")
+    package_path = PACKAGES_ROOT / "vector_package.json"
+    package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="vector_package_json",
+        stage="vectors",
+        logical_path=f"packages/{BATCH_ID}/vector_package.json",
+        file_path=str(package_path),
+        size_bytes=package_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(rows)},
+    )
 
     print(f"chunk count: {len(rows)}")
     print(f"matrix shape: {matrix.shape}")

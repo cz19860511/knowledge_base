@@ -16,6 +16,12 @@ from .retrieval_rules import RetrievalRule, expanded_query, match_rules
 from knowledge_base_paths import get_active_knowledge_base_id, get_knowledge_base_root
 
 
+def _resolve_knowledge_base_id(knowledge_base_id: str | None = None) -> str:
+    if knowledge_base_id:
+        return knowledge_base_id
+    return get_active_knowledge_base_id(settings.root_dir)
+
+
 @lru_cache(maxsize=8)
 def _load_chunks_for(knowledge_base_id: str) -> list[dict]:
     rows: list[dict] = []
@@ -30,8 +36,8 @@ def _load_chunks_for(knowledge_base_id: str) -> list[dict]:
     return rows
 
 
-def load_chunks() -> list[dict]:
-    return _load_chunks_for(get_active_knowledge_base_id(settings.root_dir))
+def load_chunks(knowledge_base_id: str | None = None) -> list[dict]:
+    return _load_chunks_for(_resolve_knowledge_base_id(knowledge_base_id))
 
 
 @lru_cache(maxsize=8)
@@ -45,8 +51,8 @@ def _load_vectorizer_for(knowledge_base_id: str):
     return joblib.load(path)
 
 
-def load_vectorizer():
-    return _load_vectorizer_for(get_active_knowledge_base_id(settings.root_dir))
+def load_vectorizer(knowledge_base_id: str | None = None):
+    return _load_vectorizer_for(_resolve_knowledge_base_id(knowledge_base_id))
 
 
 @lru_cache(maxsize=8)
@@ -60,8 +66,8 @@ def _load_matrix_for(knowledge_base_id: str):
     return sparse.load_npz(path)
 
 
-def load_matrix():
-    return _load_matrix_for(get_active_knowledge_base_id(settings.root_dir))
+def load_matrix(knowledge_base_id: str | None = None):
+    return _load_matrix_for(_resolve_knowledge_base_id(knowledge_base_id))
 
 
 @lru_cache(maxsize=8)
@@ -72,8 +78,8 @@ def _load_embedding_matrix_for(knowledge_base_id: str):
     return np.load(path)
 
 
-def load_embedding_matrix():
-    return _load_embedding_matrix_for(get_active_knowledge_base_id(settings.root_dir))
+def load_embedding_matrix(knowledge_base_id: str | None = None):
+    return _load_embedding_matrix_for(_resolve_knowledge_base_id(knowledge_base_id))
 
 
 @lru_cache(maxsize=8)
@@ -84,14 +90,18 @@ def _load_embedding_model_for(knowledge_base_id: str):
     return joblib.load(path)
 
 
-def load_embedding_model():
-    return _load_embedding_model_for(get_active_knowledge_base_id(settings.root_dir))
+def load_embedding_model(knowledge_base_id: str | None = None):
+    return _load_embedding_model_for(_resolve_knowledge_base_id(knowledge_base_id))
 
 
-def load_metadata(chunk_ids: list[str]) -> dict[str, dict]:
+def load_metadata(chunk_ids: list[str], knowledge_base_id: str | None = None) -> dict[str, dict]:
     if not chunk_ids:
         return {}
-    conn = sqlite3.connect(settings.vector_db)
+    kb_id = _resolve_knowledge_base_id(knowledge_base_id)
+    vector_db = get_knowledge_base_root(settings.root_dir, kb_id) / "vectors" / settings.batch_id / "vector_index.sqlite"
+    if not vector_db.exists():
+        return {}
+    conn = sqlite3.connect(vector_db)
     cur = conn.cursor()
     placeholders = ",".join("?" for _ in chunk_ids)
     query = f"""
@@ -200,8 +210,8 @@ def _service_query_embedding(query: str):
     return normalize(np.asarray(embeddings[:1], dtype="float32"), norm="l2").astype("float32")
 
 
-def _query_embedding(query: str, q_vec):
-    embedding_model = load_embedding_model()
+def _query_embedding(query: str, q_vec, knowledge_base_id: str | None = None):
+    embedding_model = load_embedding_model(knowledge_base_id)
     if not embedding_model:
         return None
 
@@ -259,10 +269,11 @@ def _hybrid_scores(
     return final_scores, "hybrid"
 
 
-def search(query: str, top_k: int, threshold: float) -> list[dict]:
-    vectorizer = load_vectorizer()
-    matrix = load_matrix()
-    chunks = load_chunks()
+def search(query: str, top_k: int, threshold: float, knowledge_base_id: str | None = None) -> list[dict]:
+    kb_id = _resolve_knowledge_base_id(knowledge_base_id)
+    vectorizer = load_vectorizer(kb_id)
+    matrix = load_matrix(kb_id)
+    chunks = load_chunks(kb_id)
     if not chunks or vectorizer is None or matrix.shape[0] == 0 or matrix.shape[1] == 0:
         return []
 
@@ -273,8 +284,8 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
     rule_scores, matched_rules = _rule_scores(query, chunks)
 
     embedding_scores = None
-    embedding_matrix = load_embedding_matrix()
-    q_embedding = _query_embedding(query, q_vec)
+    embedding_matrix = load_embedding_matrix(kb_id)
+    q_embedding = _query_embedding(query, q_vec, kb_id)
     if (
         embedding_matrix is not None
         and q_embedding is not None
@@ -287,7 +298,7 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
     top_idx = scores.argsort()[::-1][:candidate_count]
 
     result: list[dict] = []
-    metadata = load_metadata([chunks[i]["chunk_id"] for i in top_idx])
+    metadata = load_metadata([chunks[i]["chunk_id"] for i in top_idx], kb_id)
     for idx in top_idx:
         score = float(scores[idx])
         if score < threshold:
@@ -296,7 +307,7 @@ def search(query: str, top_k: int, threshold: float) -> list[dict]:
         meta = metadata.get(row["chunk_id"], {})
         result.append(
             {
-                "knowledge_base_id": get_active_knowledge_base_id(settings.root_dir),
+                "knowledge_base_id": kb_id,
                 "file_id": row["doc_id"],
                 "chunk_id": row["chunk_id"],
                 "title": f"{row.get('doc_type', '')} / {row.get('folder', '')} / {row.get('section_path', '')}".strip(" /"),

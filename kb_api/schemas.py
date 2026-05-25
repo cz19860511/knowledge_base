@@ -58,13 +58,17 @@ class RetrieveExtraParam(BaseModel):
 
 
 class RetrieveRequest(BaseModel):
+    knowledge_base_id: str | None = Field(
+        default=None,
+        description="优先检索的知识库 ID；未填时回退到 knowledge_base_ids 或当前激活知识库。",
+    )
     knowledge_base_ids: list[str] = Field(default_factory=list)
-    query: str
+    query: str = Field(min_length=1, max_length=4000)
     method: Literal["doc"] = "doc"
-    offset: int = 0
-    limit: int = 5
-    top_k: int = 5
-    search_threshold: float | None = None
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=5, ge=1, le=50)
+    top_k: int = Field(default=5, ge=1, le=50)
+    search_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     extra_params: list[RetrieveExtraParam] = Field(default_factory=list)
 
 
@@ -170,6 +174,306 @@ class RawPipelineStatus(BaseModel):
 class RawPipelineResponse(BaseModel):
     started: bool = False
     status: RawPipelineStatus
+
+
+class OperationEvent(BaseModel):
+    event_id: str
+    event_type: str
+    knowledge_base_id: str = ""
+    source: str = "api"
+    actor: str = "system"
+    input_assets: list[dict] = Field(default_factory=list)
+    output_assets: list[dict] = Field(default_factory=list)
+    params: dict = Field(default_factory=dict)
+    status: str = "success"
+    started_at: str = ""
+    finished_at: str = ""
+    duration_ms: int | None = None
+    error_message: str = ""
+    log_path: str = ""
+    remark: str = ""
+    created_at: str = ""
+
+
+class OperationEventListResponse(BaseModel):
+    total: int
+    event_date: str = ""
+    items: list[OperationEvent]
+
+
+class DailyReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+
+
+class DailyReportIngestResponse(BaseModel):
+    knowledge_base_id: str = ""
+    root_dir: str = ""
+    report_path: str = ""
+    selected_md_path: str = ""
+    chunks_path: str = ""
+    vectors_root: str = ""
+    chunk_count: int = 0
+    doc_count: int = 0
+    report_date: str = ""
+    vector_manifest: str = ""
+    summary: str = ""
+    sqlite: str = ""
+    embedding_dim: int = 0
+
+
+class DailyReportAutomationStatusResponse(BaseModel):
+    running: bool = False
+    thread_started: bool = False
+    scheduled_time: str = "00:10"
+    check_interval_seconds: int = 60
+    timezone: str = "Asia/Shanghai"
+    last_checked_at: str = ""
+    last_attempted_date: str = ""
+    last_success_date: str = ""
+    last_success_at: str = ""
+    last_error: str = ""
+    last_run_started_at: str = ""
+    last_run_finished_at: str = ""
+    pending_dates: list[str] = Field(default_factory=list)
+    next_planned_date: str = ""
+
+
+class DailyReportAutomationRunResponse(BaseModel):
+    running: bool = False
+    scheduled_time: str = "00:10"
+    pending_dates: list[str] = Field(default_factory=list)
+    results: list[dict] = Field(default_factory=list)
+    last_success_date: str = ""
+    last_success_at: str = ""
+    last_error: str = ""
+    last_checked_at: str = ""
+
+
+class EvolutionSuggestion(BaseModel):
+    suggestion_id: str
+    category: str
+    title: str
+    summary: str
+    recommendation: str
+    evidence: list[str] = Field(default_factory=list)
+    scope: str = ""
+    risk_level: str = "medium"
+    priority: int = 3
+    requires_human_confirmation: bool = True
+    related_event_types: list[str] = Field(default_factory=list)
+    related_knowledge_base_ids: list[str] = Field(default_factory=list)
+
+
+class EvolutionSuggestionResponse(BaseModel):
+    report_date: str = ""
+    total_events: int = 0
+    total_suggestions: int = 0
+    summary: str = ""
+    report_path: str = ""
+    suggestions: list[EvolutionSuggestion] = Field(default_factory=list)
+
+
+class EvolutionReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total_events: int = 0
+    total_suggestions: int = 0
+    content: str = ""
+
+
+class EvolutionTemplateItem(BaseModel):
+    template_id: str
+    category: str
+    title: str
+    when_to_use: str
+    required_inputs: list[str] = Field(default_factory=list)
+    output_fields: list[str] = Field(default_factory=list)
+    prompt_template: str
+
+
+class EvolutionTemplatesResponse(BaseModel):
+    generated_at: str = ""
+    template_pack_id: str = ""
+    templates: list[EvolutionTemplateItem] = Field(default_factory=list)
+
+
+class EvolutionConfirmationSuggestion(BaseModel):
+    suggestion_id: str = ""
+    category: str = ""
+    title: str = ""
+    summary: str = ""
+    recommendation: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    scope: str = ""
+    risk_level: str = "medium"
+    priority: int = 3
+    requires_human_confirmation: bool = True
+    related_event_types: list[str] = Field(default_factory=list)
+    related_knowledge_base_ids: list[str] = Field(default_factory=list)
+
+
+class EvolutionConfirmationCreateRequest(BaseModel):
+    decision: str
+    decided_by: str
+    note: str = ""
+    source_report_date: str = ""
+    source_report_path: str = ""
+    suggestion: EvolutionConfirmationSuggestion
+
+
+class EvolutionConfirmationRecord(BaseModel):
+    confirmation_id: str = ""
+    decision: str = ""
+    decided_by: str = ""
+    decided_at: str = ""
+    note: str = ""
+    source_report_date: str = ""
+    source_report_path: str = ""
+    suggestion: EvolutionConfirmationSuggestion = Field(default_factory=EvolutionConfirmationSuggestion)
+
+
+class EvolutionConfirmationListResponse(BaseModel):
+    total: int = 0
+    event_date: str = ""
+    confirmation_path: str = ""
+    items: list[EvolutionConfirmationRecord] = Field(default_factory=list)
+
+
+class EvolutionConfirmationReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+
+
+class PlatformTask(BaseModel):
+    task_id: str = ""
+    title: str = ""
+    summary: str = ""
+    priority: int = 3
+    status: str = "pending"
+    owner: str = ""
+    due_date: str = ""
+    source_type: str = "manual"
+    source_id: str = ""
+    source_report_date: str = ""
+    source_report_path: str = ""
+    source_payload: dict = Field(default_factory=dict)
+    created_by: str = "system"
+    created_at: str = ""
+    updated_at: str = ""
+    note: str = ""
+
+
+class PlatformTaskCreateRequest(BaseModel):
+    title: str
+    summary: str
+    priority: int = 3
+    status: str = "pending"
+    owner: str = ""
+    due_date: str = ""
+    source_type: str = "manual"
+    source_id: str = ""
+    source_report_date: str = ""
+    source_report_path: str = ""
+    source_payload: dict = Field(default_factory=dict)
+    created_by: str = "system"
+    note: str = ""
+
+
+class PlatformTaskUpdateRequest(BaseModel):
+    status: str | None = None
+    owner: str | None = None
+    due_date: str | None = None
+    note: str | None = None
+
+
+class PlatformTaskTransitionRequest(BaseModel):
+    target_status: str
+    owner: str | None = None
+    due_date: str | None = None
+    note: str | None = None
+
+
+class PlatformTaskListResponse(BaseModel):
+    total: int = 0
+    event_date: str = ""
+    task_path: str = ""
+    items: list[PlatformTask] = Field(default_factory=list)
+
+
+class PlatformTaskDetailResponse(BaseModel):
+    task: PlatformTask = Field(default_factory=PlatformTask)
+    history_path: str = ""
+    history: list[dict] = Field(default_factory=list)
+
+
+class PlatformTaskHistoryResponse(BaseModel):
+    total: int = 0
+    event_date: str = ""
+    history_path: str = ""
+    items: list[dict] = Field(default_factory=list)
+
+
+class PlatformTaskReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+
+
+class PlatformTaskHistoryReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+
+
+class AssetRecord(BaseModel):
+    asset_id: str
+    knowledge_base_id: str
+    asset_type: str
+    stage: str
+    logical_path: str
+    version: str
+    status: str = "active"
+    file_path: str = ""
+    checksum: str = ""
+    size_bytes: int = 0
+    created_by: str = "system"
+    created_at: str = ""
+    operation_id: str = ""
+    parent_asset_id: str = ""
+    source_asset_ids: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+
+class AssetManifestResponse(BaseModel):
+    total: int
+    manifest_path: str = ""
+    items: list[AssetRecord] = Field(default_factory=list)
+
+
+class VersionReconciliationResponse(BaseModel):
+    report_path: str = ""
+    report_date: str = ""
+    event_total: int = 0
+    asset_total: int = 0
+    linked_ref_total: int = 0
+    missing_ref_total: int = 0
+    orphan_asset_total: int = 0
+    content: str = ""
+
+
+class ReplayReportResponse(BaseModel):
+    report_path: str = ""
+    report_date: str = ""
+    event_total: int = 0
+    asset_total: int = 0
+    content: str = ""
 
 
 class PipelineConfigResponse(BaseModel):

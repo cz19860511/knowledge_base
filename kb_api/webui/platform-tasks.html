@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识平台 · 平台任务</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body data-page="tasks">
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Knowledge Platform</div>
+          <h1>平台任务</h1>
+          <p class="lead">查看建议转任务后的执行状态、快速流转任务，并回看历史轨迹和来源。</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">返回首页</a>
+          <a class="ghost-link" href="/platform-overview-ui">平台总览</a>
+          <a class="ghost-link" href="/knowledge-base-manager-ui">知识库管理</a>
+          <a class="ghost-link" href="/pipeline-config-ui">流程配置</a>
+          <a class="ghost-link" href="/raw-files-ui">原始文件管理</a>
+          <a class="ghost-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+        </div>
+      </header>
+
+      <main class="layout tasks-layout">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>访问与筛选</h2>
+              <p>先输入 API Key，再按日期、状态和来源筛选平台任务。</p>
+            </div>
+            <span class="status-pill" id="task-page-pill">未加载</span>
+          </div>
+
+          <div class="form-grid task-auth-grid">
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" placeholder="输入 `KB_API_KEY`" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>任务日期</span>
+              <input id="task-date" type="date" />
+            </label>
+            <label class="field">
+              <span>状态</span>
+              <select id="task-status-filter">
+                <option value="">全部</option>
+                <option value="pending">pending</option>
+                <option value="ready">ready</option>
+                <option value="running">running</option>
+                <option value="blocked">blocked</option>
+                <option value="done">done</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>来源</span>
+              <select id="task-source-filter">
+                <option value="">全部</option>
+                <option value="confirmation">confirmation</option>
+                <option value="manual">manual</option>
+                <option value="report">report</option>
+                <option value="event">event</option>
+              </select>
+            </label>
+            <div class="field task-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="save-key">保存 Key</button>
+                <button class="ghost-btn" id="load-tasks">加载任务</button>
+                <button class="ghost-btn" id="refresh-tasks">刷新任务</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>任务概览</h2>
+              <p>按当前筛选条件，快速看任务总量和状态分布。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="task-report-pill">任务报告未加载</span>
+              <button class="ghost-btn" id="export-task-markdown">导出 Markdown</button>
+              <button class="ghost-btn" id="save-task-report">保存任务报告</button>
+            </div>
+          </div>
+          <div class="status-grid task-kpi-grid">
+            <div class="metric">
+              <span class="metric-label">任务总数</span>
+              <strong id="task-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">pending</span>
+              <strong id="task-pending-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">running</span>
+              <strong id="task-running-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">blocked</span>
+              <strong id="task-blocked-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">done</span>
+              <strong id="task-done-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">任务报告路径</span>
+              <strong id="task-report-path">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>从确认生成任务</h2>
+              <p>把自进化建议确认记录直接转成平台任务，减少手工录入。</p>
+            </div>
+            <span class="inline-note">来源：`/operations/evolution-confirmations`</span>
+          </div>
+
+          <div class="form-grid task-create-grid">
+            <label class="field">
+              <span>确认 ID</span>
+              <input id="task-confirmation-id" type="text" placeholder="例如：ecf_xxx" />
+            </label>
+            <label class="field">
+              <span>确认日期</span>
+              <input id="task-confirmation-date" type="date" />
+            </label>
+            <label class="field">
+              <span>负责人</span>
+              <input id="task-create-owner" type="text" placeholder="例如：张三" />
+            </label>
+            <label class="field">
+              <span>截止日期</span>
+              <input id="task-create-due-date" type="date" />
+            </label>
+            <label class="field field-span-2">
+              <span>备注</span>
+              <textarea id="task-create-note" placeholder="说明为什么转成这个任务"></textarea>
+            </label>
+          </div>
+
+          <div class="actions-row">
+            <button class="primary-btn" id="create-task-from-confirmation">从确认生成任务</button>
+            <button class="ghost-btn" id="fill-confirmation-example">填入示例</button>
+            <button class="ghost-btn" id="clear-confirmation-form">清空</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>确认记录</h2>
+              <p>查看当前日期的确认记录，并直接转成平台任务。</p>
+            </div>
+            <span class="inline-note" id="task-confirmation-note">先加载任务后自动同步确认记录</span>
+          </div>
+          <div id="task-confirmations" class="overview-list">
+            <div class="placeholder">先加载任务列表</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>任务列表与详情</h2>
+              <p>点开任务后，可以直接查看历史并切换状态。</p>
+            </div>
+            <span class="inline-note" id="task-selection-note">先选择一条任务</span>
+          </div>
+
+          <div class="tasks-shell">
+            <div class="table-wrap task-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>状态</th>
+                    <th>负责人 / 截止</th>
+                    <th>来源</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="task-table">
+                  <tr>
+                    <td colspan="5" class="placeholder">先加载任务列表</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="task-detail-panel">
+              <div class="meta-block">
+                <span class="metric-label">任务详情</span>
+                <div class="task-detail-card">
+                  <div class="task-detail-title" id="task-detail-title">-</div>
+                  <div class="mini-note" id="task-detail-meta">-</div>
+                  <div class="snippet" id="task-detail-summary">-</div>
+                  <div class="task-detail-source" id="task-detail-source">-</div>
+                  <pre id="task-detail-payload" class="task-detail-payload">{}</pre>
+                </div>
+              </div>
+
+              <div class="meta-block">
+                <span class="metric-label">状态流转</span>
+                <div class="form-grid task-transition-grid">
+                  <label class="field">
+                    <span>目标状态</span>
+                    <select id="task-target-status">
+                      <option value="ready">ready</option>
+                      <option value="running">running</option>
+                      <option value="blocked">blocked</option>
+                      <option value="done">done</option>
+                      <option value="cancelled">cancelled</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>负责人</span>
+                    <input id="task-owner" type="text" placeholder="例如：张三" />
+                  </label>
+                  <label class="field">
+                    <span>截止日期</span>
+                    <input id="task-due-date" type="date" />
+                  </label>
+                  <label class="field field-span-2">
+                    <span>备注</span>
+                    <textarea id="task-note" placeholder="补充流转说明"></textarea>
+                  </label>
+                </div>
+                <div class="actions-row">
+                  <button class="primary-btn" id="transition-task">应用流转</button>
+                  <button class="ghost-btn" id="refresh-task-detail">刷新详情</button>
+                  <button class="ghost-btn" id="export-task-detail-markdown">导出详情 Markdown</button>
+                </div>
+              </div>
+
+              <div class="meta-block">
+                <span class="metric-label">历史轨迹</span>
+                <div class="actions-row task-export-actions">
+                  <button class="ghost-btn" id="save-task-history-report">保存历史报告</button>
+                </div>
+                <div id="task-history" class="overview-list">
+                  <div class="placeholder">-</div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

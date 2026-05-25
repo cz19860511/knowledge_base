@@ -71,3 +71,34 @@ def ensure_knowledge_base_workspace(
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)
     return paths
+
+
+def resolve_knowledge_base_id_for_request(
+    root_dir: Path | str | None = None,
+    knowledge_base_id: str | None = None,
+    knowledge_base_ids: list[str] | None = None,
+) -> str:
+    from kb_api.config import settings
+    from knowledge_base_registry import load_registry
+
+    base_dir = Path(root_dir or settings.root_dir)
+    registry = load_registry(base_dir)
+    active_id = get_active_knowledge_base_id(base_dir)
+    allowed_ids = [str(item.get("knowledge_base_id") or "").strip() for item in registry.get("items", []) if str(item.get("knowledge_base_id") or "").strip()]
+    request_ids = [str(item).strip() for item in (knowledge_base_ids or []) if str(item).strip()]
+
+    if knowledge_base_id and request_ids and knowledge_base_id not in request_ids:
+        raise ValueError("knowledge_base_id must be included in knowledge_base_ids when both are provided")
+
+    if knowledge_base_id:
+        if knowledge_base_id in allowed_ids:
+            return knowledge_base_id
+        raise ValueError(f"knowledge base not found: {knowledge_base_id}")
+
+    if request_ids:
+        for candidate in request_ids:
+            if candidate in allowed_ids:
+                return candidate
+        return active_id
+
+    return active_id

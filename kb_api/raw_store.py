@@ -13,6 +13,9 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from .config import settings
+from .asset_manifest import record_asset_version
+from .operation_log import append_operation_event
+from knowledge_base_paths import get_active_knowledge_base_id
 
 
 ALLOWED_FOLDERS = [
@@ -233,6 +236,25 @@ def _record_version(
     files = manifest.setdefault("files", {})
     files[_manifest_key(folder, file_name)] = entry
     _save_manifest(manifest)
+    record_asset_version(
+        settings.root_dir,
+        knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+        asset_type="raw_file",
+        stage="raw",
+        logical_path=_manifest_key(folder, file_name),
+        file_path=str(target),
+        checksum=checksum,
+        size_bytes=len(data),
+        created_by="webui",
+        status="active",
+        metadata={
+            "folder": folder,
+            "file_name": file_name,
+            "action": action,
+            "source_version": source_version,
+            "restored_from": restored_from,
+        },
+    )
     return entry
 
 
@@ -287,6 +309,21 @@ def _build_item(path: Path, entry: dict | None) -> dict:
         "size_bytes": size_bytes,
         "checksum": checksum,
         "history": history,
+    }
+
+
+def _item_asset(item: dict | None, stage: str = "raw") -> dict:
+    if not item:
+        return {"stage": stage}
+    return {
+        "stage": stage,
+        "kb_id": get_active_knowledge_base_id(settings.root_dir),
+        "raw_key": item.get("raw_key"),
+        "folder": item.get("folder"),
+        "file_name": item.get("file_name"),
+        "version": item.get("version"),
+        "file_path": item.get("file_path"),
+        "checksum": item.get("checksum"),
     }
 
 
@@ -380,6 +417,21 @@ def _mark_deleted(folder: str, file_name: str) -> dict:
     )
     files[rel_key] = entry
     _save_manifest(manifest)
+    record_asset_version(
+        settings.root_dir,
+        knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+        asset_type="raw_file",
+        stage="raw",
+        logical_path=rel_key,
+        file_path=str(settings.raw_source_root / folder / file_name),
+        created_by="webui",
+        status="deleted",
+        metadata={
+            "folder": folder,
+            "file_name": file_name,
+            "action": "delete",
+        },
+    )
     return entry
 
 
@@ -434,10 +486,29 @@ def save_uploaded_files(folder: str, uploads: list[UploadFile]) -> dict:
             restored_from=None,
             action="upload",
         )
+        item = _build_item(target, entry)
+        append_operation_event(
+            settings.root_dir,
+            event_type="upload",
+            knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+            source="api/raw-files/upload",
+            actor="webui",
+            output_assets=[_item_asset(item, stage="raw")],
+            params={
+                "folder": folder,
+                "file_name": file_name,
+                "action": "updated" if existed else "created",
+                "run_pipeline": False,
+                "size_bytes": len(data),
+                "checksum": item.get("checksum"),
+            },
+            status="success",
+            remark="raw file uploaded",
+        )
         results.append(
             {
                 "action": "updated" if existed else "created",
-                "item": _build_item(target, entry),
+                "item": item,
             }
         )
         if existed:
@@ -494,10 +565,35 @@ def rollback_raw_file(folder: str, file_name: str, version: str | None = None) -
         restored_from=restored_from,
         action="rollback",
     )
+    item = _build_item(target, entry)
+    append_operation_event(
+        settings.root_dir,
+        event_type="rollback",
+        knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+        source="api/raw-files/rollback",
+        actor="webui",
+        input_assets=[
+            {
+                "stage": "raw",
+                "kb_id": get_active_knowledge_base_id(settings.root_dir),
+                "folder": folder,
+                "file_name": file_name,
+                "version": str(target_record.get("version", "")),
+            }
+        ],
+        output_assets=[_item_asset(item, stage="raw")],
+        params={
+            "folder": folder,
+            "file_name": file_name,
+            "restored_from_version": str(target_record.get("version", "")),
+        },
+        status="success",
+        remark="raw file rolled back",
+    )
     return {
         "restored": True,
         "restored_from_version": str(target_record.get("version", "")),
-        "item": _build_item(target, entry),
+        "item": item,
     }
 
 
@@ -509,24 +605,49 @@ def delete_raw_file(folder: str, file_name: str) -> dict:
     if existed:
         target.unlink()
     entry = _mark_deleted(folder, file_name)
-    return {
-        "deleted": existed,
-        "item": {
-            "raw_key": _manifest_key(folder, file_name),
+    item = {
+        "raw_key": _manifest_key(folder, file_name),
+        "folder": folder,
+        "file_name": file_name,
+        "relative_path": _manifest_key(folder, file_name),
+        "file_path": str(target),
+        "exists": False,
+        "deleted": True,
+        "version": str(entry.get("current_version", f"v{len(_entry_history(entry)) or 1}")),
+        "version_count": len(_entry_history(entry)) or 1,
+        "upload_time": str(entry.get("current_uploaded_at", "")),
+        "updated_at": str(entry.get("updated_at", _now_iso())),
+        "size_bytes": int(entry.get("current_size_bytes", 0) or 0),
+        "checksum": entry.get("current_checksum"),
+        "history": _entry_history(entry),
+    }
+    append_operation_event(
+        settings.root_dir,
+        event_type="delete",
+        knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+        source="api/raw-files/delete",
+        actor="webui",
+        input_assets=[
+            {
+                "stage": "raw",
+                "kb_id": get_active_knowledge_base_id(settings.root_dir),
+                "folder": folder,
+                "file_name": file_name,
+                "file_path": str(target),
+            }
+        ],
+        output_assets=[_item_asset(item, stage="raw")],
+        params={
             "folder": folder,
             "file_name": file_name,
-            "relative_path": _manifest_key(folder, file_name),
-            "file_path": str(target),
-            "exists": False,
-            "deleted": True,
-            "version": str(entry.get("current_version", f"v{len(_entry_history(entry)) or 1}")),
-            "version_count": len(_entry_history(entry)) or 1,
-            "upload_time": str(entry.get("current_uploaded_at", "")),
-            "updated_at": str(entry.get("updated_at", _now_iso())),
-            "size_bytes": int(entry.get("current_size_bytes", 0) or 0),
-            "checksum": entry.get("current_checksum"),
-            "history": _entry_history(entry),
+            "existed": existed,
         },
+        status="success",
+        remark="raw file deleted",
+    )
+    return {
+        "deleted": existed,
+        "item": item,
     }
 
 
@@ -564,7 +685,37 @@ def _run_pipeline_job(run_id: str, trigger_reason: str, stage: str, folder: str 
         for step_name in stages:
             script = PIPELINE_STAGE_SCRIPTS[step_name]
             _update_pipeline_status(current_stage=step_name, current_step=step_name, current_folder=folder or "")
+            append_operation_event(
+                settings.root_dir,
+                event_type=f"{step_name}_start",
+                knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+                source="pipeline/manual",
+                actor="system",
+                params={
+                    "run_id": run_id,
+                    "trigger_reason": trigger_reason,
+                    "stage": step_name,
+                    "folder": folder or "",
+                },
+                status="running",
+                remark=f"{step_name} started",
+            )
             _run_script(script, step_name, folder, env)
+            append_operation_event(
+                settings.root_dir,
+                event_type=step_name,
+                knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+                source="pipeline/manual",
+                actor="system",
+                params={
+                    "run_id": run_id,
+                    "trigger_reason": trigger_reason,
+                    "stage": step_name,
+                    "folder": folder or "",
+                },
+                status="success",
+                remark=f"{step_name} finished",
+            )
 
         _update_pipeline_status(
             running=False,
@@ -580,6 +731,22 @@ def _run_pipeline_job(run_id: str, trigger_reason: str, stage: str, folder: str 
         )
     except Exception as exc:
         _append_pipeline_log(f"[{_now_iso()}] !!! pipeline failed: {exc}")
+        append_operation_event(
+            settings.root_dir,
+            event_type=stage if stage in {"preprocess", "chunk", "embedding"} else "pipeline",
+            knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+            source="pipeline/manual",
+            actor="system",
+            params={
+                "run_id": run_id,
+                "trigger_reason": trigger_reason,
+                "stage": stage,
+                "folder": folder or "",
+            },
+            status="failed",
+            error_message=str(exc),
+            remark="pipeline failed",
+        )
         _update_pipeline_status(
             running=False,
             state="failed",
@@ -620,11 +787,26 @@ def start_pipeline(stage: str = "all", folder: str | None = None, trigger_reason
             }
         )
         _save_pipeline_status(status)
-
-        thread = threading.Thread(target=_run_pipeline_job, args=(run_id, trigger_reason, stage, folder), daemon=True)
-        _PIPELINE_THREAD = thread
-        thread.start()
-        return status
+    append_operation_event(
+        settings.root_dir,
+        event_type="pipeline_start",
+        knowledge_base_id=get_active_knowledge_base_id(settings.root_dir),
+        source="api/raw-files/pipeline",
+        actor="system",
+        params={
+            "run_id": run_id,
+            "trigger_reason": trigger_reason,
+            "stage": stage,
+            "folder": folder or "",
+            "force": force,
+        },
+        status="running",
+        remark="pipeline queued",
+    )
+    thread = threading.Thread(target=_run_pipeline_job, args=(run_id, trigger_reason, stage, folder), daemon=True)
+    _PIPELINE_THREAD = thread
+    thread.start()
+    return status
 
 
 def get_pipeline_status() -> dict:

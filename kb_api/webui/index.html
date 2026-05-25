@@ -16,6 +16,8 @@
           <p class="lead">查看运行状态、知识库概况和检索效果，原始文件管理请进入单独页面。</p>
         </div>
         <div class="topbar-actions">
+          <a class="ghost-link" href="/platform-overview-ui">平台总览</a>
+          <a class="ghost-link" href="/platform-tasks-ui">平台任务</a>
           <a class="ghost-link" href="/knowledge-base-manager-ui">知识库管理</a>
           <a class="ghost-link" href="/pipeline-config-ui">流程配置</a>
           <a class="ghost-link" href="/raw-files-ui">原始文件管理</a>
@@ -53,6 +55,38 @@
             <div class="metric">
               <span class="metric-label">模型</span>
               <strong id="embed-model">bge-small-zh-v1.5</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>日报自动任务</h2>
+              <p>每天自动生成操作日报并入库到平台运行记忆库。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="daily-report-pill">未加载</span>
+              <button class="ghost-btn" id="refresh-daily-report">刷新状态</button>
+              <button class="ghost-btn" id="run-daily-report-now">立即补跑</button>
+            </div>
+          </div>
+          <div class="status-grid">
+            <div class="metric">
+              <span class="metric-label">计划时间</span>
+              <strong id="daily-report-scheduled">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">上次成功日期</span>
+              <strong id="daily-report-last-success">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">下次待跑日期</span>
+              <strong id="daily-report-next">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">最后错误</span>
+              <strong id="daily-report-error">-</strong>
             </div>
           </div>
         </section>

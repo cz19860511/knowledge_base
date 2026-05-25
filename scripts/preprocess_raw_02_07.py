@@ -15,6 +15,8 @@ from typing import Iterable
 from markitdown import MarkItDown
 from knowledge_base_paths import get_knowledge_base_root
 from pipeline_config import DEFAULT_PIPELINE_CONFIG, load_pipeline_config
+from kb_api.asset_manifest import record_asset_version
+from kb_api.asset_manifest import record_asset_version
 
 
 ROOT = get_knowledge_base_root(Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base")))
@@ -22,6 +24,7 @@ RAW_ROOT = ROOT / "raw" / "标准化体系_分类版"
 STAGING_ROOT = ROOT / "staging" / "raw_02_07"
 WORKING_ROOT = ROOT / "working"
 BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
+KB_ID = os.getenv("KB_KB_ID", "ai_qna_standard_v1")
 MINERU_OUT = WORKING_ROOT / "parsed" / BATCH_ID / "mineru"
 MARKITDOWN_OUT = WORKING_ROOT / "parsed" / BATCH_ID / "markitdown_docx"
 EVAL_OUT = WORKING_ROOT / "evaluation" / BATCH_ID
@@ -155,6 +158,29 @@ def run_markitdown_docx(files: list[Path], enabled: bool) -> dict[str, Path]:
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
         (dest_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        logical_base = f"working/parsed/{BATCH_ID}/markitdown_docx/{rel_folder}/{_safe_name(src)}"
+        record_asset_version(
+            ROOT,
+            knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+            asset_type="parsed_markitdown_md",
+            stage="parsed",
+            logical_path=f"{logical_base}/content.md",
+            file_path=str(dest_dir / "content.md"),
+            size_bytes=len(markdown.encode("utf-8")),
+            created_by="pipeline",
+            metadata={"source_path": str(src), "parser": "markitdown"},
+        )
+        record_asset_version(
+            ROOT,
+            knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+            asset_type="parsed_markitdown_meta",
+            stage="parsed",
+            logical_path=f"{logical_base}/meta.json",
+            file_path=str(dest_dir / "meta.json"),
+            size_bytes=(dest_dir / "meta.json").stat().st_size,
+            created_by="pipeline",
+            metadata={"source_path": str(src), "parser": "markitdown"},
+        )
         produced[str(src)] = dest_dir / "content.md"
     return produced
 
@@ -228,6 +254,29 @@ def parse_mineru_outputs(folder: str, source_files: list[Path]) -> list[FileReco
         }
         doc_dir.mkdir(parents=True, exist_ok=True)
         (doc_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        logical_base = f"working/parsed/{BATCH_ID}/mineru/{folder}/{stem}/auto"
+        record_asset_version(
+            ROOT,
+            knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+            asset_type="parsed_mineru_md",
+            stage="parsed",
+            logical_path=f"{logical_base}/{stem}.md",
+            file_path=str(md_file),
+            size_bytes=md_file.stat().st_size if md_file.exists() else 0,
+            created_by="pipeline",
+            metadata={"source_path": str(src), "parser": "mineru"},
+        )
+        record_asset_version(
+            ROOT,
+            knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+            asset_type="parsed_mineru_meta",
+            stage="parsed",
+            logical_path=f"{folder}/{stem}/meta.json",
+            file_path=str(doc_dir / "meta.json"),
+            size_bytes=(doc_dir / "meta.json").stat().st_size,
+            created_by="pipeline",
+            metadata={"source_path": str(src), "parser": "mineru"},
+        )
         records.append(
             FileRecord(
                 folder=folder,
@@ -264,6 +313,17 @@ def write_evaluation(records: list[FileRecord]) -> None:
         for rec in records:
             writer.writerow(asdict(rec))
     json_path.write_text(json.dumps([asdict(r) for r in records], ensure_ascii=False, indent=2), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+        asset_type="evaluation_summary",
+        stage="evaluation",
+        logical_path=f"working/evaluation/{BATCH_ID}/parse_summary.json",
+        file_path=str(json_path),
+        size_bytes=json_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"record_count": len(records)},
+    )
     counts = {}
     for rec in records:
         counts[rec.recommendation] = counts.get(rec.recommendation, 0) + 1
@@ -281,6 +341,17 @@ def write_evaluation(records: list[FileRecord]) -> None:
         "- Marker 作为后续抽样对比兜底，待模型/依赖统一后再接入本轮评估。",
     ]
     md_path.write_text("\n".join(lines), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+        asset_type="evaluation_summary_md",
+        stage="evaluation",
+        logical_path=f"working/evaluation/{BATCH_ID}/parse_summary.md",
+        file_path=str(md_path),
+        size_bytes=md_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"record_count": len(records)},
+    )
 
 
 def load_existing_evaluation() -> list[FileRecord]:
@@ -366,6 +437,28 @@ def main() -> None:
     (SELECTED_OUT / "candidate_list.md").write_text(
         "# selected 候选清单\n\n" + "\n".join(f"- {r['folder']} / {r['file_name']} / {r['score']}" for r in selected_candidates[:200]),
         encoding="utf-8",
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+        asset_type="selected_candidate_json",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/candidate_list.json",
+        file_path=str(SELECTED_OUT / "candidate_list.json"),
+        size_bytes=(SELECTED_OUT / "candidate_list.json").stat().st_size,
+        created_by="pipeline",
+        metadata={"candidate_count": len(selected_candidates)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=os.getenv("KB_KB_ID", "ai_qna_standard_v1"),
+        asset_type="selected_candidate_md",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/candidate_list.md",
+        file_path=str(SELECTED_OUT / "candidate_list.md"),
+        size_bytes=(SELECTED_OUT / "candidate_list.md").stat().st_size,
+        created_by="pipeline",
+        metadata={"candidate_count": len(selected_candidates)},
     )
 
     # 5) 预留后续阶段目录

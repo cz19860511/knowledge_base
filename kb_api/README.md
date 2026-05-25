@@ -9,7 +9,7 @@
 - `GET /knowledge-base-manager-ui`
 - `GET /pipeline-config-ui`
 - `GET /knowledge-bases`
-- `POST /knowledge-bases/retrieve`
+- `POST /knowledge-bases/retrieve`（推荐优先传 `knowledge_base_id`，兼容 `knowledge_base_ids`）
 - `GET /knowledge-base-registry`
 - `POST /knowledge-base-registry`
 - `PUT /knowledge-base-registry/{knowledge_base_id}`
@@ -21,6 +21,13 @@
 - `DELETE /raw-files`
 - `GET /raw-files/pipeline`
 - `POST /raw-files/pipeline`
+- `GET /operations/events`
+- `GET /operations/daily-report`
+- `GET /operations/daily-report/automation`
+- `POST /operations/daily-report/automation/run`
+- `POST /operations/daily-report/ingest`
+- `GET /operations/evolution-suggestions`
+- `GET /operations/evolution-report`
 
 ## 本地运行
 
@@ -29,6 +36,8 @@ source /Users/chenzhuo/hb/.venv_kb/bin/activate
 export KB_ROOT_DIR=/Users/chenzhuo/hb/knowledge_base
 export KB_API_KEY=change-me
 export KB_RETRIEVAL_MODE=hybrid
+export KB_DAILY_REPORT_RUN_TIME=00:10
+export KB_DAILY_REPORT_CHECK_INTERVAL_SECONDS=60
 uvicorn kb_api.main:app --host 0.0.0.0 --port 8080
 ```
 
@@ -51,5 +60,9 @@ docker compose -f knowledge_base/kb_api/docker-compose.yml up --build
 - 当前推荐索引使用 `bge-small-zh-v1.5` 重新建库；如 embedding 服务不可用，`kb-api` 会自动降级到关键词检索和规则增强。
 - `pipeline_config.json` 会保存在 `/data/kb/operations/`，WebUI 的“流程配置”页面会直接读写这份文件。
 - `knowledge_bases.json` 会保存在 `/data/kb/operations/`，WebUI 的“知识库管理”页面会直接读写这份文件。
+- `retrieve` 支持显式传入 `knowledge_base_id` 路由到指定知识库；若同时传入 `knowledge_base_ids`，`knowledge_base_id` 必须包含在列表中。
+- `knowledge_base_id` 是 AgentArts 联调的首选写法，旧字段只用于兼容。
+- 平台操作事件写入 `/data/kb/operations/events/`，日报可以通过自动调度进入 `platform_run_memory`。
+- 自进化建议报告会基于操作事件生成，并可导出为 `/data/kb/operations/evolution/` 下的 Markdown。
 - 重新建库可执行：`python /Users/chenzhuo/hb/knowledge_base/scripts/build_hybrid_vectors.py`。
 - 中文 embedding 服务说明见：[embedding-service README](/Users/chenzhuo/hb/knowledge_base/embedding_service/README.md)。

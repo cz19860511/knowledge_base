@@ -26,6 +26,8 @@ class Settings:
     candidate_multiplier: int = int(os.getenv("KB_CANDIDATE_MULTIPLIER", "8"))
     embedding_service_url: str = os.getenv("KB_EMBEDDING_SERVICE_URL", "http://embedding-service:9100")
     embedding_service_timeout: int = int(os.getenv("KB_EMBEDDING_SERVICE_TIMEOUT", "30"))
+    daily_report_run_time: str = os.getenv("KB_DAILY_REPORT_RUN_TIME", "00:10")
+    daily_report_check_interval_seconds: int = int(os.getenv("KB_DAILY_REPORT_CHECK_INTERVAL_SECONDS", "60"))
 
     @property
     def chunks_jsonl(self) -> Path:
@@ -42,6 +44,10 @@ class Settings:
     @property
     def raw_manifest_path(self) -> Path:
         return self.operations_dir / "raw_manifest.json"
+
+    @property
+    def asset_manifest_path(self) -> Path:
+        return self.operations_dir / "asset_manifest.json"
 
     @property
     def raw_versions_root(self) -> Path:

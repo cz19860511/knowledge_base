@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>知识平台 · 平台总览</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body data-page="overview">
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Knowledge Platform</div>
+          <h1>平台总览</h1>
+          <p class="lead">把知识库、事件、日报、版本对账、事件回放和自进化建议放到一页里，快速看清平台今天的整体状态。</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">返回首页</a>
+          <a class="ghost-link" href="/platform-tasks-ui">平台任务</a>
+          <a class="ghost-link" href="/knowledge-base-manager-ui">知识库管理</a>
+          <a class="ghost-link" href="/pipeline-config-ui">流程配置</a>
+          <a class="ghost-link" href="/raw-files-ui">原始文件管理</a>
+          <a class="ghost-link" href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+          <button class="ghost-btn" id="refresh-overview">刷新总览</button>
+        </div>
+      </header>
+
+      <main class="layout overview-layout">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>总览状态</h2>
+              <p>先输入 API Key，再加载整个平台的汇总信息。</p>
+            </div>
+            <span class="status-pill" id="overview-pill">未加载</span>
+          </div>
+
+          <div class="form-grid overview-auth-grid">
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" placeholder="输入 `KB_API_KEY`" autocomplete="off" />
+            </label>
+            <div class="field">
+              <span>当前激活知识库</span>
+              <div class="config-meta" id="overview-active-kb">-</div>
+              <div class="mini-note" id="overview-date">-</div>
+            </div>
+            <div class="field overview-actions-field">
+              <span>操作</span>
+              <div class="actions-row">
+                <button class="primary-btn" id="save-key">保存 Key</button>
+                <button class="ghost-btn" id="load-overview">加载总览</button>
+                <button class="ghost-btn" id="refresh-overview-quick">刷新总览</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>关键指标</h2>
+              <p>这些指标直接反映今天的平台运行面貌。</p>
+            </div>
+          </div>
+          <div class="status-grid overview-kpi-grid">
+            <div class="metric">
+              <span class="metric-label">知识库数</span>
+              <strong id="overview-kb-count">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">今日事件</span>
+              <strong id="overview-event-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">失败事件</span>
+              <strong id="overview-failed-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">建议数</span>
+              <strong id="overview-suggestion-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">确认记录</span>
+              <strong id="overview-confirm-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">平台任务</span>
+              <strong id="overview-task-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">对账缺失</span>
+              <strong id="overview-missing-total">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel overview-split">
+          <div class="panel-head">
+            <div>
+              <h2>日报与对账</h2>
+              <p>查看当日操作日报、版本对账结果和平台回放摘要。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="overview-daily-pill">日报未加载</span>
+              <span class="status-pill" id="overview-reconcile-pill">对账未加载</span>
+            </div>
+          </div>
+          <div class="overview-grid">
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>今日日报</strong>
+                <span class="mini-note" id="overview-daily-path">-</span>
+              </div>
+              <div class="snippet overview-snippet" id="overview-daily-summary">-</div>
+            </article>
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>版本对账</strong>
+                <span class="mini-note" id="overview-reconcile-path">-</span>
+              </div>
+              <div class="snippet overview-snippet" id="overview-reconcile-summary">-</div>
+            </article>
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>事件回放</strong>
+                <span class="mini-note" id="overview-replay-path">-</span>
+              </div>
+              <div class="snippet overview-snippet" id="overview-replay-summary">-</div>
+            </article>
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>自动调度</strong>
+                <span class="mini-note" id="overview-automation-path">-</span>
+              </div>
+              <div class="snippet overview-snippet" id="overview-automation-summary">-</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel overview-split">
+          <div class="panel-head">
+            <div>
+              <h2>时间线与建议</h2>
+              <p>看今天发生了什么、有哪些建议、有没有已经确认的动作。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="overview-status-pill">待加载</span>
+            </div>
+          </div>
+          <div class="result-shell overview-shell">
+            <div class="result-list" id="overview-timeline">
+              <div class="placeholder">先加载总览，再查看时间线。</div>
+            </div>
+            <aside class="result-meta overview-meta">
+              <div class="meta-block">
+                <span class="metric-label">最近建议</span>
+                <div id="overview-suggestions" class="overview-list">
+                  <div class="placeholder">-</div>
+                </div>
+              </div>
+              <div class="meta-block">
+                <span class="metric-label">确认记录</span>
+                <div id="overview-confirmations" class="overview-list">
+                  <div class="placeholder">-</div>
+                </div>
+              </div>
+              <div class="meta-block">
+                <span class="metric-label">平台任务</span>
+                <div id="overview-tasks" class="overview-list">
+                  <div class="placeholder">-</div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

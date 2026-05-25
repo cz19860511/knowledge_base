@@ -13,6 +13,7 @@ from typing import Iterable
 
 from knowledge_base_paths import get_knowledge_base_root
 from pipeline_config import DEFAULT_PIPELINE_CONFIG, load_pipeline_config
+from kb_api.asset_manifest import record_asset_version
 
 
 ROOT = get_knowledge_base_root(Path(os.getenv("KB_ROOT_DIR", "/Users/chenzhuo/hb/knowledge_base")))
@@ -23,6 +24,7 @@ EVAL_ROOT = WORKING_ROOT / "evaluation"
 MINERU_OUT = WORKING_ROOT / "parsed"
 MARKITDOWN_OUT = WORKING_ROOT / "parsed"
 BATCH_ID = os.getenv("KB_BATCH_ID", "batch_20260521")
+KB_ID = os.getenv("KB_KB_ID", "ai_qna_standard_v1")
 
 RAW_BATCH_ROOT = ROOT / "raw" / "标准化体系_分类版"
 PARSE_SUMMARY = EVAL_ROOT / BATCH_ID / "parse_summary.json"
@@ -417,6 +419,28 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
         "- 每份文档保存为 `selected.md` 和 `selected_meta.json`。",
     ]
     selected_manifest_md.write_text("\n".join(selected_summary), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="selected_manifest_json",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/selected_manifest.json",
+        file_path=str(selected_manifest_path),
+        size_bytes=selected_manifest_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"selected_docs": len(selected_rows)},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="selected_manifest_md",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/selected_manifest.md",
+        file_path=str(selected_manifest_md),
+        size_bytes=selected_manifest_md.stat().st_size,
+        created_by="pipeline",
+        metadata={"selected_docs": len(selected_rows)},
+    )
 
     chunks_jsonl = CHUNKS_BATCH_ROOT / "chunks.jsonl"
     chunk_stats_path = CHUNKS_BATCH_ROOT / "chunk_stats.json"
@@ -426,6 +450,17 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
     with chunks_jsonl.open("w", encoding="utf-8") as f:
         for row in chunk_rows:
             f.write(json.dumps(asdict(row), ensure_ascii=False) + "\n")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="chunks_jsonl",
+        stage="chunks",
+        logical_path=f"chunks/{BATCH_ID}/chunks.jsonl",
+        file_path=str(chunks_jsonl),
+        size_bytes=chunks_jsonl.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(chunk_rows)},
+    )
 
     doc_chunk_counts: dict[str, int] = {}
     chunk_sizes: list[int] = []
@@ -452,6 +487,17 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
         "doc_chunk_counts": doc_chunk_counts,
     }
     chunk_stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="chunk_stats",
+        stage="chunks",
+        logical_path=f"chunks/{BATCH_ID}/chunk_stats.json",
+        file_path=str(chunk_stats_path),
+        size_bytes=chunk_stats_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"chunk_count": len(chunk_rows)},
+    )
 
     with preview_csv.open("w", encoding="utf-8", newline="") as f:
         fieldnames = list(preview_rows[0].keys()) if preview_rows else []
@@ -459,6 +505,17 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
         writer.writeheader()
         for row in preview_rows:
             writer.writerow(row)
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="chunks_preview_csv",
+        stage="chunks",
+        logical_path=f"chunks/{BATCH_ID}/chunks_preview.csv",
+        file_path=str(preview_csv),
+        size_bytes=preview_csv.stat().st_size,
+        created_by="pipeline",
+        metadata={"preview_rows": len(preview_rows)},
+    )
 
     preview_lines = [
         f"# {BATCH_ID} chunk 预览",
@@ -473,6 +530,17 @@ def write_outputs(selected_rows: list[SelectedDoc], chunk_rows: list[ChunkRecord
         f"- chunk_stats.json：{chunk_stats_path}",
     ]
     preview_md.write_text("\n".join(preview_lines), encoding="utf-8")
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="chunks_preview_md",
+        stage="chunks",
+        logical_path=f"chunks/{BATCH_ID}/chunks_preview.md",
+        file_path=str(preview_md),
+        size_bytes=preview_md.stat().st_size,
+        created_by="pipeline",
+        metadata={"preview_rows": len(preview_rows)},
+    )
 
     print(f"selected docs: {len(selected_rows)}")
     print(f"chunks: {len(chunk_rows)}")
@@ -769,6 +837,28 @@ def build_selected_doc_from_item(item: dict, seq: int, best_md: Path, parser: st
         "note": item.get("note", ""),
     }
     write_text(selected_meta_path, json.dumps(selected_meta, ensure_ascii=False, indent=2))
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="selected_doc_md",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/documents/{doc_slug}/selected.md",
+        file_path=str(selected_md_path),
+        size_bytes=selected_md_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"doc_id": doc_id, "source_path": str(src), "selected_md_source": str(best_md), "parser": parser},
+    )
+    record_asset_version(
+        ROOT,
+        knowledge_base_id=KB_ID,
+        asset_type="selected_doc_meta",
+        stage="selected",
+        logical_path=f"selected/{BATCH_ID}/documents/{doc_slug}/selected_meta.json",
+        file_path=str(selected_meta_path),
+        size_bytes=selected_meta_path.stat().st_size,
+        created_by="pipeline",
+        metadata={"doc_id": doc_id, "source_path": str(src), "selected_md_source": str(best_md), "parser": parser},
+    )
 
     row = SelectedDoc(
         doc_id=doc_id,

@@ -48,6 +48,8 @@ cp /opt/kb-app/kb_api/.env.example /opt/kb-app/kb_api/.env
 - `KB_QUERY_EXPANSION_ENABLED=true`
 - `KB_EMBEDDING_SERVICE_URL=http://embedding-service:9100`
 - `KB_ROOT_DIR=/data/kb`
+- `KB_DAILY_REPORT_RUN_TIME=00:10`
+- `KB_DAILY_REPORT_CHECK_INTERVAL_SECONDS=60`
 
 ### 3. 同步代码和数据
 
@@ -85,6 +87,9 @@ docker compose -f docker-compose.ecs.yml --profile embedding up -d --build
 `http://<ECS-IP>:9090/pipeline-config-ui` 是流程配置页面，保存内容会写入 `/data/kb/operations/pipeline_config.json`。
 `/data/kb/raw` 需要挂载到 `kb-api` 容器，才能看到原始文件列表和版本信息。
 `/data/kb/operations/knowledge_bases.json` 是知识库注册表。
+`/data/kb/operations/events/` 记录平台操作事件，`/data/kb/operations/daily/` 存放每日日报，`platform_run_memory` 会自动接收日报入库。
+`/data/kb/operations/evolution/` 存放自进化建议报告。
+`/operations/evolution-suggestions` 和 `/operations/evolution-report` 可直接查看当天自进化建议。
 
 ### 4.1 如果要启用 HTTPS
 
@@ -119,7 +124,7 @@ curl -X POST http://127.0.0.1:9100/embed \
 curl -X POST http://8.161.227.173:9090/knowledge-bases/retrieve \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <KB_API_KEY>' \
-  -d '{"knowledge_base_ids":["ai_qna_standard_v1"],"query":"服务区危化品车辆现场处理流程是什么","top_k":3,"limit":3,"search_threshold":0.0}'
+  -d '{"knowledge_base_id":"ai_qna_standard_v1","query":"服务区危化品车辆现场处理流程是什么","top_k":3,"limit":3,"search_threshold":0.0}'
 ```
 
 期望返回：
@@ -127,6 +132,19 @@ curl -X POST http://8.161.227.173:9090/knowledge-bases/retrieve \
 - `retrieval_mode` 为 `hybrid`
 - `matched_rules` 包含 `hazmat_vehicle`
 - 返回内容可追溯到 chunk、章节和来源文件
+
+兼容老请求：
+
+```bash
+curl -X POST http://8.161.227.173:9090/knowledge-bases/retrieve \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <KB_API_KEY>' \
+  -d '{"knowledge_base_ids":["ai_qna_standard_v1"],"query":"服务区危化品车辆现场处理流程是什么","top_k":3,"limit":3,"search_threshold":0.0}'
+```
+
+优先建议新接入方使用 `knowledge_base_id`，这样路由语义更清晰。
+
+AgentArts 联调时建议统一采用单库 ID 路由，只有旧版本兼容场景才保留 `knowledge_base_ids`。
 
 ## 对外访问
 

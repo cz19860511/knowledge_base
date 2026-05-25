@@ -9,6 +9,12 @@ const state = {
   rawExpandedHistory: new Set(),
   pipelineConfig: null,
   registry: null,
+  dailyReportAutomation: null,
+  overview: null,
+  tasksPage: null,
+  selectedTaskId: "",
+  taskConfirmations: [],
+  taskDetail: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -92,6 +98,14 @@ function formatTime(value) {
   }
 }
 
+function todayIsoDate() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function splitList(value) {
   if (Array.isArray(value)) {
     return value.map((item) => String(item).trim()).filter(Boolean);
@@ -107,6 +121,12 @@ function splitList(value) {
 
 function joinList(value) {
   return splitList(value).join(", ");
+}
+
+function truncateText(value, limit = 420) {
+  const text = String(value || "");
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trim()}…`;
 }
 
 function setInputValue(id, value) {
@@ -349,6 +369,561 @@ function renderRawPipeline(pipeline) {
   const folder = pipeline?.current_folder || "-";
   setText("raw-step", folder && folder !== "-" ? `${stage} / ${folder}` : stage);
   setText("raw-success", formatTime(pipeline?.last_success_at || pipeline?.finished_at));
+}
+
+function renderDailyReportAutomation(payload) {
+  state.dailyReportAutomation = payload;
+  const pill = el("daily-report-pill");
+  if (pill) {
+    const isWarn = Boolean(payload?.last_error);
+    pill.textContent = payload?.running ? "运行中" : payload?.thread_started ? "已启动" : "未启动";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add(isWarn ? "warn" : "ok");
+  }
+
+  setText("daily-report-scheduled", payload?.scheduled_time || "-");
+  setText("daily-report-last-success", payload?.last_success_date || "-");
+  setText("daily-report-next", payload?.next_planned_date || (payload?.pending_dates?.[0] || "-"));
+  setText("daily-report-error", payload?.last_error || "-");
+}
+
+function renderDailyReportAutomationEmpty(message) {
+  const pill = el("daily-report-pill");
+  if (pill) {
+    pill.textContent = "未加载";
+    pill.classList.remove("ok", "warn");
+  }
+  setText("daily-report-scheduled", "-");
+  setText("daily-report-last-success", "-");
+  setText("daily-report-next", "-");
+  setText("daily-report-error", message || "-");
+}
+
+function renderOverviewEmpty(message) {
+  state.overview = null;
+  const pill = el("overview-pill");
+  if (pill) {
+    pill.textContent = message || "未加载";
+    pill.classList.remove("ok", "warn");
+  }
+  setText("overview-active-kb", "-");
+  setText("overview-date", "-");
+  setText("overview-kb-count", "-");
+  setText("overview-event-total", "-");
+  setText("overview-failed-total", "-");
+  setText("overview-suggestion-total", "-");
+  setText("overview-confirm-total", "-");
+  setText("overview-task-total", "-");
+  setText("overview-missing-total", "-");
+  setText("overview-daily-path", "-");
+  setText("overview-daily-summary", "-");
+  setText("overview-reconcile-path", "-");
+  setText("overview-reconcile-summary", "-");
+  setText("overview-replay-path", "-");
+  setText("overview-replay-summary", "-");
+  setText("overview-automation-path", "-");
+  setText("overview-automation-summary", "-");
+  setText("overview-status-pill", message || "未加载");
+  setHtml("overview-timeline", '<div class="placeholder">先加载总览，再查看时间线。</div>');
+  setHtml("overview-suggestions", '<div class="placeholder">-</div>');
+  setHtml("overview-confirmations", '<div class="placeholder">-</div>');
+  setHtml("overview-tasks", '<div class="placeholder">-</div>');
+}
+
+function renderOverviewSuggestion(item) {
+  const chips = [
+    item.category || "-",
+    item.risk_level ? `风险 ${item.risk_level}` : null,
+    item.priority != null ? `优先级 ${item.priority}` : null,
+  ]
+    .filter(Boolean)
+    .map((value) => `<span class="chip">${escapeHtml(String(value))}</span>`)
+    .join("");
+
+  return `
+    <article class="overview-item">
+      <div class="overview-item-head">
+        <strong>${escapeHtml(item.title || "-")}</strong>
+        <span class="score-badge">${escapeHtml(item.category || "-")}</span>
+      </div>
+      <div class="chips">${chips}</div>
+      <div class="snippet">${escapeHtml(item.summary || item.recommendation || "-")}</div>
+    </article>
+  `;
+}
+
+function renderOverviewConfirmation(item) {
+  return `
+    <article class="overview-item">
+      <div class="overview-item-head">
+        <strong>${escapeHtml(item.suggestion?.title || item.decision || "-")}</strong>
+        <span class="score-badge">${escapeHtml(item.decision || "-")}</span>
+      </div>
+      <div class="snippet">${escapeHtml(item.note || item.suggestion?.summary || "-")}</div>
+      <div class="mini-note">${escapeHtml(formatTime(item.decided_at || ""))} · ${escapeHtml(item.decided_by || "-")}</div>
+      <div class="overview-item-actions">
+        <button class="ghost-btn" data-confirmation-task="${escapeHtml(item.confirmation_id || "")}">转任务</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderOverviewTask(item) {
+  return `
+    <article class="overview-item">
+      <div class="overview-item-head">
+        <strong>${escapeHtml(item.title || "-")}</strong>
+        <span class="score-badge">${escapeHtml(item.status || "-")}</span>
+      </div>
+      <div class="snippet">${escapeHtml(item.summary || "-")}</div>
+      <div class="mini-note">${escapeHtml(item.owner || "-")} · ${escapeHtml(item.due_date || "未设截止")}</div>
+    </article>
+  `;
+}
+
+function renderPlatformOverview(payload) {
+  state.overview = payload;
+  const pill = el("overview-pill");
+  if (pill) {
+    pill.textContent = payload?.status || "ok";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add((payload?.status || "ok") === "ok" ? "ok" : "warn");
+  }
+  setText("overview-active-kb", payload?.active_knowledge_base_id || "-");
+  setText("overview-date", `统计日期：${payload?.report_date || todayIsoDate()}`);
+  setText("overview-kb-count", String(payload?.knowledge_base_count ?? "-"));
+  setText("overview-event-total", String(payload?.event_total ?? "-"));
+  setText("overview-failed-total", String(payload?.failed_event_total ?? "-"));
+  setText("overview-suggestion-total", String(payload?.suggestion_total ?? "-"));
+  setText("overview-confirm-total", String(payload?.confirmation_total ?? "-"));
+  setText("overview-task-total", String(payload?.task_total ?? "-"));
+  setText("overview-missing-total", String(payload?.missing_ref_total ?? "-"));
+  setText("overview-daily-path", payload?.daily_report_path || "-");
+  setText("overview-daily-summary", payload?.daily_report_summary || "-");
+  setText("overview-reconcile-path", payload?.reconciliation_path || "-");
+  setText("overview-reconcile-summary", payload?.reconciliation_summary || "-");
+  setText("overview-replay-path", payload?.replay_path || "-");
+  setText("overview-replay-summary", payload?.replay_summary || "-");
+  setText("overview-automation-path", payload?.daily_automation_path || "-");
+  setText("overview-automation-summary", payload?.daily_automation_summary || "-");
+  setText("overview-status-pill", payload?.status || "ok");
+
+  const timelineNode = el("overview-timeline");
+  const timeline = payload?.timeline || [];
+  if (timelineNode) {
+    timelineNode.innerHTML = timeline.length
+      ? timeline
+          .slice(0, 15)
+          .map(
+            (item) => `
+              <article class="result-item">
+                <div class="result-top">
+                  <strong>${escapeHtml(item.event_type || "-")}</strong>
+                  <span class="score-badge">${escapeHtml(item.status || "-")}</span>
+                </div>
+                <div class="chips">
+                  <span class="chip">${escapeHtml(item.started_at || "-")}</span>
+                  <span class="chip">${escapeHtml(item.knowledge_base_id || "-")}</span>
+                  <span class="chip">${escapeHtml(item.source || "-")}</span>
+                </div>
+                <div class="snippet">${escapeHtml(item.remark || "-")}</div>
+              </article>
+            `,
+          )
+          .join("")
+      : '<div class="placeholder">今天还没有事件。</div>';
+  }
+
+  const suggestionsNode = el("overview-suggestions");
+  if (suggestionsNode) {
+    suggestionsNode.innerHTML = (payload?.suggestions || []).length
+      ? payload.suggestions.slice(0, 5).map(renderOverviewSuggestion).join("")
+      : '<div class="placeholder">今天没有需要特别关注的建议。</div>';
+  }
+
+  const confirmationsNode = el("overview-confirmations");
+  if (confirmationsNode) {
+    confirmationsNode.innerHTML = (payload?.confirmations || []).length
+      ? payload.confirmations.slice(0, 5).map(renderOverviewConfirmation).join("")
+      : '<div class="placeholder">今天还没有确认记录。</div>';
+  }
+
+  const tasksNode = el("overview-tasks");
+  if (tasksNode) {
+    tasksNode.innerHTML = (payload?.tasks || []).length
+      ? payload.tasks.slice(0, 5).map(renderOverviewTask).join("")
+      : '<div class="placeholder">今天还没有平台任务。</div>';
+  }
+}
+
+function renderTaskHistoryEntry(item) {
+  const chips = [
+    item.event_type || "-",
+    item.from_status && item.to_status ? `${item.from_status} → ${item.to_status}` : null,
+    item.status ? `状态 ${item.status}` : null,
+    item.owner ? `负责人 ${item.owner}` : null,
+    item.due_date ? `截止 ${item.due_date}` : null,
+  ]
+    .filter(Boolean)
+    .map((value) => `<span class="chip">${escapeHtml(String(value))}</span>`)
+    .join("");
+
+  return `
+    <article class="task-history-item">
+      <div class="task-history-head">
+        <strong>${escapeHtml(formatTime(item.created_at || item.decided_at || ""))}</strong>
+        <span class="score-badge">${escapeHtml(item.event_type || "-")}</span>
+      </div>
+      <div class="chips">${chips}</div>
+      <div class="task-history-meta">${escapeHtml(item.note || item.remark || "-")}</div>
+    </article>
+  `;
+}
+
+function renderPlatformTaskDetailEmpty(message) {
+  state.taskDetail = null;
+  setText("task-detail-title", message || "-");
+  setText("task-detail-meta", "-");
+  setText("task-detail-summary", "-");
+  setText("task-detail-source", "-");
+  setText("task-detail-payload", "{}");
+  setHtml("task-history", '<div class="placeholder">-</div>');
+  setText("task-selection-note", message || "先选择一条任务");
+  setDisabled("transition-task", true);
+  setText("task-page-pill", message || "未加载");
+  setText("task-report-pill", "任务报告未加载");
+  setText("task-total", "-");
+  setText("task-pending-total", "-");
+  setText("task-running-total", "-");
+  setText("task-blocked-total", "-");
+  setText("task-done-total", "-");
+  setText("task-report-path", "-");
+}
+
+function clearPlatformTaskCreateForm() {
+  setInputValue("task-confirmation-id", "");
+  setInputValue("task-confirmation-date", "");
+  setInputValue("task-create-owner", "");
+  setInputValue("task-create-due-date", "");
+  setInputValue("task-create-note", "");
+}
+
+function renderPlatformTaskDetail(payload) {
+  state.taskDetail = payload || null;
+  const task = payload?.task || {};
+  state.selectedTaskId = task.task_id || "";
+  setText("task-detail-title", task.title || "-");
+  setText(
+    "task-detail-meta",
+    [
+      task.task_id ? `任务 ID：${task.task_id}` : null,
+      task.status ? `状态：${task.status}` : null,
+      task.priority != null ? `优先级：${task.priority}` : null,
+      task.owner ? `负责人：${task.owner}` : null,
+      task.due_date ? `截止：${task.due_date}` : null,
+      task.created_at ? `创建：${formatTime(task.created_at)}` : null,
+      task.updated_at ? `更新：${formatTime(task.updated_at)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  );
+  setText("task-detail-summary", task.summary || "-");
+  setText(
+    "task-detail-source",
+    [
+      task.source_type ? `来源：${task.source_type}` : null,
+      task.source_id ? `来源 ID：${task.source_id}` : null,
+      task.source_report_date ? `报告日期：${task.source_report_date}` : null,
+      task.source_report_path ? `报告路径：${task.source_report_path}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  );
+  setText("task-detail-payload", JSON.stringify(task.source_payload || {}, null, 2));
+  setInputValue("task-target-status", task.status || "ready");
+  setInputValue("task-owner", task.owner || "");
+  setInputValue("task-due-date", task.due_date || "");
+  setInputValue("task-note", task.note || "");
+  setText("task-selection-note", `当前任务：${task.title || task.task_id || "-"}`);
+  setDisabled("transition-task", false);
+
+  const historyNode = el("task-history");
+  const history = payload?.history || [];
+  if (historyNode) {
+    historyNode.innerHTML = history.length
+      ? history.slice().reverse().map(renderTaskHistoryEntry).join("")
+      : '<div class="placeholder">暂无历史记录</div>';
+  }
+}
+
+function renderPlatformTaskList(payload, reportPayload = null) {
+  state.tasksPage = {
+    list: payload,
+    report: reportPayload,
+  };
+  const pill = el("task-page-pill");
+  if (pill) {
+    pill.textContent = "已加载";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add("ok");
+  }
+
+  const report = reportPayload || {};
+  const items = payload?.items || [];
+  const counts = items.reduce(
+    (acc, item) => {
+      const status = String(item.status || "").trim();
+      if (status in acc) {
+        acc[status] += 1;
+      }
+      return acc;
+    },
+    { pending: 0, running: 0, blocked: 0, done: 0 },
+  );
+  setText("task-total", String(payload?.total ?? items.length ?? "-"));
+  setText("task-pending-total", String(counts.pending ?? 0));
+  setText("task-running-total", String(counts.running ?? 0));
+  setText("task-blocked-total", String(counts.blocked ?? 0));
+  setText("task-done-total", String(counts.done ?? 0));
+  setText("task-report-path", report.task_path || payload?.task_path || "-");
+  setText("task-report-pill", report.report_date ? `报告 ${report.report_date}` : "任务报告已加载");
+
+  const body = el("task-table");
+  if (!body) return;
+
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="5" class="placeholder">当前筛选条件下没有任务</td></tr>';
+    return;
+  }
+
+  body.innerHTML = items
+    .map((item) => {
+      const selected = state.selectedTaskId && state.selectedTaskId === item.task_id;
+      return `
+        <tr class="${selected ? "task-row-selected" : ""}">
+          <td>
+            <strong>${escapeHtml(item.title || "-")}</strong>
+            <div class="history-text">${escapeHtml(item.summary || "-")}</div>
+          </td>
+          <td>
+            <span class="score-badge">${escapeHtml(item.status || "-")}</span>
+            <div class="history-text">${escapeHtml(item.priority != null ? `priority ${item.priority}` : "-")}</div>
+          </td>
+          <td>
+            ${escapeHtml(item.owner || "-")}
+            <div class="history-text">${escapeHtml(item.due_date || "未设截止")}</div>
+          </td>
+          <td>
+            ${escapeHtml(item.source_type || "-")}
+            <div class="history-text">${escapeHtml(item.source_id || item.source_report_date || "-")}</div>
+          </td>
+          <td>
+            <div class="task-row-actions">
+              <button class="ghost-btn" data-task-open="${escapeHtml(item.task_id)}">查看</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderPlatformTaskConfirmations(payload) {
+  state.taskConfirmations = payload?.items || [];
+  const note = el("task-confirmation-note");
+  if (note) {
+    note.textContent = payload?.event_date ? `确认日期：${payload.event_date}` : "确认记录已加载";
+  }
+
+  const container = el("task-confirmations");
+  if (!container) return;
+
+  if (!state.taskConfirmations.length) {
+    container.innerHTML = '<div class="placeholder">当前日期没有确认记录</div>';
+    return;
+  }
+
+  container.innerHTML = state.taskConfirmations
+    .map((item) => {
+      const suggestion = item.suggestion || {};
+      return `
+        <article class="overview-item">
+          <div class="overview-item-head">
+            <strong>${escapeHtml(suggestion.title || item.decision || "-")}</strong>
+            <span class="score-badge">${escapeHtml(item.decision || "-")}</span>
+          </div>
+          <div class="chips">
+            <span class="chip">${escapeHtml(item.confirmation_id || "-")}</span>
+            <span class="chip">${escapeHtml(item.decided_by || "-")}</span>
+            <span class="chip">${escapeHtml(item.decided_at || "-")}</span>
+          </div>
+          <div class="snippet">${escapeHtml(item.note || suggestion.summary || "-")}</div>
+          <div class="mini-note">${escapeHtml(suggestion.recommendation || "-")}</div>
+          <div class="task-confirmation-actions">
+            <button class="ghost-btn" data-task-confirmation="${escapeHtml(item.confirmation_id || "")}">转任务</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildTaskListMarkdown() {
+  const filters = getTaskPageFilters();
+  const list = state.tasksPage?.list || { total: 0, items: [] };
+  const report = state.tasksPage?.report || {};
+  const items = list.items || [];
+  const lines = [
+    `# 平台任务导出 ${filters.date || todayIsoDate()}`,
+    "",
+    "## 筛选条件",
+    "",
+    `- 日期：${filters.date || "-"}`,
+    `- 状态：${filters.status || "全部"}`,
+    `- 来源：${filters.sourceType || "全部"}`,
+    "",
+    "## 概览",
+    "",
+    `- 任务总数：${list.total ?? items.length ?? 0}`,
+    `- 报告路径：${report.task_path || "-"}`,
+    "",
+    "## 任务列表",
+    "",
+  ];
+
+  if (!items.length) {
+    lines.push("- 无");
+  } else {
+    items.forEach((item, index) => {
+      lines.push(
+        `${index + 1}. [${item.status || "-"}] ${item.title || "-"} ` +
+          `priority=${item.priority ?? "-"} owner=${item.owner || "-"} due=${item.due_date || "-"}`,
+      );
+      lines.push(`   - 任务 ID：${item.task_id || "-"}`);
+      lines.push(`   - 来源：${item.source_type || "-"} / ${item.source_id || item.source_report_date || "-"}`);
+      if (item.summary) {
+        lines.push(`   - 摘要：${item.summary}`);
+      }
+      if (item.note) {
+        lines.push(`   - 备注：${item.note}`);
+      }
+    });
+  }
+
+  if (state.taskConfirmations.length) {
+    lines.push("", "## 确认记录", "");
+    state.taskConfirmations.forEach((item, index) => {
+      const suggestion = item.suggestion || {};
+      lines.push(
+        `${index + 1}. [${item.decision || "-"}] ${suggestion.title || "-"} ` +
+          `confirmation_id=${item.confirmation_id || "-"} decided_by=${item.decided_by || "-"}`,
+      );
+      if (item.note) {
+        lines.push(`   - 备注：${item.note}`);
+      }
+      if (suggestion.recommendation) {
+        lines.push(`   - 建议：${suggestion.recommendation}`);
+      }
+    });
+  }
+
+  return lines.join("\n");
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportTaskListMarkdown() {
+  if (!state.tasksPage?.list) {
+    alert("先加载任务列表再导出。");
+    return;
+  }
+  const date = getTaskPageFilters().date || todayIsoDate();
+  const filename = `platform_tasks_${date}.md`;
+  downloadTextFile(filename, buildTaskListMarkdown());
+}
+
+function buildSelectedTaskMarkdown() {
+  const payload = state.taskDetail || {};
+  const task = payload.task || {};
+  const history = payload.history || [];
+  const lines = [
+    `# 任务详情 ${task.title || task.task_id || "-"}`,
+    "",
+    "## 基本信息",
+    "",
+    `- 任务 ID：${task.task_id || "-"}`,
+    `- 状态：${task.status || "-"}`,
+    `- 优先级：${task.priority ?? "-"}`,
+    `- 负责人：${task.owner || "-"}`,
+    `- 截止日期：${task.due_date || "-"}`,
+    `- 创建时间：${task.created_at || "-"}`,
+    `- 更新时间：${task.updated_at || "-"}`,
+    `- 来源类型：${task.source_type || "-"}`,
+    `- 来源 ID：${task.source_id || "-"}`,
+    `- 来源报告日期：${task.source_report_date || "-"}`,
+    `- 来源报告路径：${task.source_report_path || "-"}`,
+    "",
+    "## 任务摘要",
+    "",
+    task.summary || "-",
+    "",
+    "## 备注",
+    "",
+    task.note || "-",
+    "",
+    "## 原始载荷",
+    "",
+    "```json",
+    JSON.stringify(task.source_payload || {}, null, 2),
+    "```",
+    "",
+    "## 历史轨迹",
+    "",
+  ];
+
+  if (!history.length) {
+    lines.push("- 无");
+  } else {
+    history.forEach((item, index) => {
+      lines.push(
+        `${index + 1}. ${item.event_type || "-"} ` +
+          `${item.from_status && item.to_status ? `${item.from_status} -> ${item.to_status}` : ""}`.trim(),
+      );
+      lines.push(`   - 时间：${item.created_at || "-"}`);
+      lines.push(`   - 状态：${item.status || "-"}`);
+      if (item.owner) {
+        lines.push(`   - 负责人：${item.owner}`);
+      }
+      if (item.due_date) {
+        lines.push(`   - 截止日期：${item.due_date}`);
+      }
+      if (item.note) {
+        lines.push(`   - 备注：${item.note}`);
+      }
+    });
+  }
+
+  return lines.join("\n");
+}
+
+function exportSelectedTaskMarkdown() {
+  if (!state.taskDetail?.task?.task_id) {
+    alert("先选择一条任务再导出。");
+    return;
+  }
+  const task = state.taskDetail.task;
+  const filename = `platform_task_${task.task_id}.md`;
+  downloadTextFile(filename, buildSelectedTaskMarkdown());
 }
 
 function renderRawFiles(payload) {
@@ -619,6 +1194,389 @@ async function loadRawPipelineStatus(silent = false) {
     headers: { Authorization: `Bearer ${state.apiKey}` },
   });
   renderRawPipeline(data);
+}
+
+async function loadDailyAutomation(silent = false) {
+  const pill = el("daily-report-pill");
+  if (!pill) return;
+
+  if (!state.apiKey) {
+    if (!silent) {
+      alert("先输入 API Key 再查看日报自动任务。");
+    }
+    renderDailyReportAutomationEmpty("输入 API Key 后可查看");
+    return;
+  }
+
+  try {
+    const data = await fetchJson("/operations/daily-report/automation", {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderDailyReportAutomation(data);
+  } catch (error) {
+    if (!silent) {
+      alert(`加载日报自动任务失败：${error.message}`);
+    }
+    renderDailyReportAutomationEmpty("加载失败");
+  }
+}
+
+async function runDailyAutomationNow() {
+  if (!requireApiKey()) return;
+  const button = el("run-daily-report-now");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "补跑中...";
+  try {
+    const data = await fetchJson("/operations/daily-report/automation/run", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderDailyReportAutomation({
+      ...state.dailyReportAutomation,
+      ...data,
+    });
+    alert(`补跑完成：${data.results?.length || 0} 份日报。`);
+  } catch (error) {
+    alert(`补跑失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "立即补跑";
+  }
+}
+
+async function loadPlatformOverview(silent = false) {
+  const pill = el("overview-pill");
+  if (!pill) return;
+
+  if (!state.apiKey) {
+    if (!silent) {
+      alert("先输入 API Key 再加载平台总览。");
+    }
+    renderOverviewEmpty("输入 API Key 后可查看");
+    return;
+  }
+
+  const today = todayIsoDate();
+  const headers = { Authorization: `Bearer ${state.apiKey}` };
+
+  try {
+    const [
+      registry,
+      knowledgeBases,
+      automation,
+      events,
+      dailyReport,
+      reconciliation,
+      replay,
+      suggestions,
+      confirmations,
+      taskReport,
+      tasksList,
+      assets,
+    ] = await Promise.all([
+      fetchJson("/knowledge-base-registry", { headers }),
+      fetchJson("/knowledge-bases", { headers }),
+      fetchJson("/operations/daily-report/automation", { headers }),
+      fetchJson(`/operations/events?date=${encodeURIComponent(today)}&limit=100`, { headers }),
+      fetchJson(`/operations/daily-report?date=${encodeURIComponent(today)}&save=false`, { headers }),
+      fetchJson(`/operations/version-reconciliation?date=${encodeURIComponent(today)}&save=false`, { headers }),
+      fetchJson(`/operations/replay-report?date=${encodeURIComponent(today)}&save=false`, { headers }),
+      fetchJson(`/operations/evolution-suggestions?date=${encodeURIComponent(today)}`, { headers }),
+      fetchJson(`/operations/evolution-confirmations?date=${encodeURIComponent(today)}`, { headers }),
+      fetchJson(`/operations/platform-task-report?date=${encodeURIComponent(today)}&save=false`, { headers }),
+      fetchJson(`/operations/platform-tasks?date=${encodeURIComponent(today)}&limit=50`, { headers }),
+      fetchJson(`/operations/assets?limit=500`, { headers }),
+    ]);
+
+    const failedEventTotal = (events.items || []).filter((item) => String(item.status || "").trim() === "failed").length;
+    const summary = {
+      status: reconciliation.missing_ref_total || failedEventTotal ? "warn" : "ok",
+      report_date: today,
+      active_knowledge_base_id: registry.active_knowledge_base_id || state.health?.active_knowledge_base_id || state.health?.knowledge_base_id || "-",
+      knowledge_base_count: knowledgeBases.total ?? (knowledgeBases.knowledge_base_list || []).length,
+      event_total: events.total ?? (events.items || []).length,
+      failed_event_total: failedEventTotal,
+      suggestion_total: suggestions.total_suggestions ?? (suggestions.suggestions || []).length,
+      confirmation_total: confirmations.total ?? (confirmations.items || []).length,
+      task_total: taskReport.total ?? (tasksList.items || []).length,
+      missing_ref_total: reconciliation.missing_ref_total ?? 0,
+      daily_report_path: dailyReport.report_path || "-",
+      daily_report_summary: truncateText(dailyReport.content || "今日日报未生成。", 500),
+      reconciliation_path: reconciliation.report_path || "-",
+      reconciliation_summary: truncateText(reconciliation.content || "对账结果为空。", 360),
+      replay_path: replay.report_path || "-",
+      replay_summary: truncateText(replay.content || "回放结果为空。", 360),
+      daily_automation_path: automation.running ? "运行中" : automation.thread_started ? "已启动" : "未启动",
+      daily_automation_summary: automation.last_error ? `自动调度异常：${automation.last_error}` : `计划时间 ${automation.scheduled_time || "-"}`,
+      timeline: (events.items || []).slice().sort((a, b) => String(a.started_at || "").localeCompare(String(b.started_at || ""))),
+      suggestions: (suggestions.suggestions || []).slice(0, 5),
+      confirmations: (confirmations.items || []).slice(0, 5),
+      tasks: (tasksList.items || []).slice(0, 5),
+      asset_total: assets.total ?? (assets.items || []).length,
+      recent_assets: (assets.items || []).slice(-5),
+    };
+    renderPlatformOverview(summary);
+  } catch (error) {
+    if (!silent) {
+      alert(`加载平台总览失败：${error.message}`);
+    }
+    renderOverviewEmpty("加载失败");
+  }
+}
+
+function getTaskPageFilters() {
+  return {
+    date: (el("task-date")?.value || "").trim() || todayIsoDate(),
+    status: (el("task-status-filter")?.value || "").trim(),
+    sourceType: (el("task-source-filter")?.value || "").trim(),
+  };
+}
+
+async function loadPlatformTaskDetail(taskId, silent = false) {
+  if (!requireApiKey()) return;
+  if (!taskId) {
+    renderPlatformTaskDetailEmpty("先选择一条任务");
+    return;
+  }
+
+  try {
+    const filters = getTaskPageFilters();
+    const payload = await fetchJson(`/operations/platform-tasks/${encodeURIComponent(taskId)}?date=${encodeURIComponent(filters.date)}`, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderPlatformTaskDetail(payload);
+    renderPlatformTaskList(state.tasksPage?.list || { items: [], total: 0 }, state.tasksPage?.report || null);
+  } catch (error) {
+    if (!silent) {
+      alert(`加载任务详情失败：${error.message}`);
+    }
+    renderPlatformTaskDetailEmpty("加载失败");
+  }
+}
+
+async function loadPlatformTasks(silent = false) {
+  const pill = el("task-page-pill");
+  if (!pill) return;
+
+  if (!state.apiKey) {
+    if (!silent) {
+      alert("先输入 API Key 再加载平台任务。");
+    }
+    pill.textContent = "未加载";
+    pill.classList.remove("ok", "warn");
+    renderPlatformTaskDetailEmpty("输入 API Key 后可查看");
+    setHtml("task-table", '<tr><td colspan="5" class="placeholder">输入 API Key 后可加载任务</td></tr>');
+    return;
+  }
+
+  const filters = getTaskPageFilters();
+  const headers = { Authorization: `Bearer ${state.apiKey}` };
+
+  try {
+    const [report, list] = await Promise.all([
+      fetchJson(`/operations/platform-task-report?date=${encodeURIComponent(filters.date)}&save=false`, { headers }),
+      fetchJson(
+        `/operations/platform-tasks?date=${encodeURIComponent(filters.date)}&status=${encodeURIComponent(filters.status)}&source_type=${encodeURIComponent(filters.sourceType)}&limit=200`,
+        { headers },
+      ),
+    ]);
+    const confirmations = await fetchJson(`/operations/evolution-confirmations?date=${encodeURIComponent(filters.date)}&limit=200`, { headers });
+
+    state.tasksPage = { list, report };
+    renderPlatformTaskConfirmations(confirmations);
+    const nextTaskId =
+      state.selectedTaskId && (list.items || []).some((item) => item.task_id === state.selectedTaskId)
+        ? state.selectedTaskId
+        : (list.items || [])[0]?.task_id || "";
+    renderPlatformTaskList(list, report);
+    if (nextTaskId) {
+      await loadPlatformTaskDetail(nextTaskId, true);
+    } else {
+      renderPlatformTaskDetailEmpty("当前筛选条件下没有任务");
+    }
+  } catch (error) {
+    if (!silent) {
+      alert(`加载平台任务失败：${error.message}`);
+    }
+    pill.textContent = "加载失败";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add("warn");
+    renderPlatformTaskDetailEmpty("加载失败");
+  }
+}
+
+async function savePlatformTaskReport() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const button = el("save-task-report");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+  try {
+    const report = await fetchJson(`/operations/platform-task-report?date=${encodeURIComponent(filters.date)}&save=true`, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    if (state.tasksPage) {
+      state.tasksPage.report = report;
+    }
+    renderPlatformTaskList(state.tasksPage?.list || { total: 0, items: [] }, report);
+    alert(`任务报告已保存：${report.report_path || "-"}`);
+  } catch (error) {
+    alert(`保存任务报告失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存任务报告";
+  }
+}
+
+async function savePlatformTaskHistoryReport() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const button = el("save-task-history-report");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+  try {
+    const report = await fetchJson(`/operations/platform-task-history-report?date=${encodeURIComponent(filters.date)}&save=true`, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    alert(`任务历史报告已保存：${report.report_path || "-"}`);
+  } catch (error) {
+    alert(`保存任务历史报告失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存历史报告";
+  }
+}
+
+async function transitionCurrentTask() {
+  if (!requireApiKey()) return;
+  if (!state.selectedTaskId) {
+    alert("先选择一条任务。");
+    return;
+  }
+
+  const payload = {
+    target_status: (el("task-target-status")?.value || "ready").trim(),
+    owner: (el("task-owner")?.value || "").trim(),
+    due_date: (el("task-due-date")?.value || "").trim(),
+    note: (el("task-note")?.value || "").trim(),
+  };
+
+  const button = el("transition-task");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "流转中...";
+  try {
+    await fetchJson(`/operations/platform-tasks/${encodeURIComponent(state.selectedTaskId)}/transition`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+      body: JSON.stringify(payload),
+    });
+    await loadPlatformTasks(true);
+    alert("任务流转已更新。");
+  } catch (error) {
+    alert(`流转失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "应用流转";
+  }
+}
+
+async function createTaskFromConfirmation() {
+  if (!requireApiKey()) return;
+  const confirmationId = (el("task-confirmation-id")?.value || "").trim();
+  if (!confirmationId) {
+    alert("先填写确认 ID。");
+    return;
+  }
+
+  const params = new URLSearchParams();
+  params.set("confirmation_id", confirmationId);
+  const date = (el("task-confirmation-date")?.value || "").trim();
+  if (date) {
+    params.set("date", date);
+  }
+  const owner = (el("task-create-owner")?.value || "").trim();
+  if (owner) {
+    params.set("owner", owner);
+  }
+  const dueDate = (el("task-create-due-date")?.value || "").trim();
+  if (dueDate) {
+    params.set("due_date", dueDate);
+  }
+  const note = (el("task-create-note")?.value || "").trim();
+  if (note) {
+    params.set("note", note);
+  }
+
+  const button = el("create-task-from-confirmation");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "生成中...";
+  try {
+    const created = await fetchJson(`/operations/platform-tasks/from-confirmation?${params.toString()}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    await loadPlatformTasks(true);
+    state.selectedTaskId = created.task_id || "";
+    if (state.selectedTaskId) {
+      await loadPlatformTaskDetail(state.selectedTaskId, true);
+    }
+    alert(`任务已生成：${created.title || created.task_id || "-"}`);
+  } catch (error) {
+    alert(`生成任务失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "从确认生成任务";
+  }
+}
+
+async function createTaskFromConfirmationRecord(confirmationId, confirmationDate, suggestionTitle) {
+  if (!requireApiKey()) return;
+  if (!confirmationId) {
+    alert("缺少确认 ID。");
+    return;
+  }
+
+  const params = new URLSearchParams();
+  params.set("confirmation_id", confirmationId);
+  params.set("date", confirmationDate || todayIsoDate());
+  const selectedConfirmation =
+    (state.overview?.confirmations || []).find((item) => item.confirmation_id === confirmationId) ||
+    (state.taskConfirmations || []).find((item) => item.confirmation_id === confirmationId);
+  if (selectedConfirmation?.decided_by) {
+    params.set("owner", selectedConfirmation.decided_by);
+  }
+  if (selectedConfirmation?.note) {
+    params.set("note", selectedConfirmation.note);
+  }
+
+  try {
+    const created = await fetchJson(`/operations/platform-tasks/from-confirmation?${params.toString()}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    alert(`已从确认生成任务：${created.title || suggestionTitle || created.task_id || "-"}`);
+    if (PAGE === "overview") {
+      await loadPlatformOverview(true);
+    } else if (PAGE === "tasks") {
+      await loadPlatformTasks(true);
+      state.selectedTaskId = created.task_id || "";
+      if (state.selectedTaskId) {
+        await loadPlatformTaskDetail(state.selectedTaskId, true);
+      }
+    }
+  } catch (error) {
+    alert(`从确认生成任务失败：${error.message}`);
+  }
 }
 
 async function loadPipelineConfig(silent = false) {
@@ -924,6 +1882,8 @@ async function runRawStage(stage, buttonId, runningText) {
 
 function bindHomeEvents() {
   el("refresh-health")?.addEventListener("click", loadHealth);
+  el("refresh-daily-report")?.addEventListener("click", () => loadDailyAutomation(true));
+  el("run-daily-report-now")?.addEventListener("click", runDailyAutomationNow);
   el("load-kbs")?.addEventListener("click", loadKnowledgeBases);
   el("run-query")?.addEventListener("click", runQuery);
   el("save-key")?.addEventListener("click", async () => {
@@ -932,6 +1892,7 @@ function bindHomeEvents() {
     alert("API Key 已保存到本地浏览器。");
     try {
       await loadKnowledgeBases();
+      await loadDailyAutomation(true);
     } catch (error) {
       alert(`加载数据失败：${error.message}`);
     }
@@ -948,6 +1909,92 @@ function bindHomeEvents() {
     if (list) {
       list.innerHTML = '<div class="placeholder">执行一次检索后，结果会显示在这里。</div>';
     }
+    renderDailyReportAutomationEmpty("输入 API Key 后可查看");
+  });
+}
+
+function bindOverviewEvents() {
+  el("refresh-overview")?.addEventListener("click", () => loadPlatformOverview(true));
+  el("refresh-overview-quick")?.addEventListener("click", () => loadPlatformOverview(true));
+  el("load-overview")?.addEventListener("click", () => loadPlatformOverview());
+  el("save-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
+    localStorage.setItem("kb_api_key", state.apiKey);
+    alert("API Key 已保存到本地浏览器。");
+    try {
+      await loadPlatformOverview(true);
+    } catch (error) {
+      alert(`加载总览失败：${error.message}`);
+    }
+  });
+  el("overview-confirmations")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-confirmation-task]");
+    if (!button) return;
+    const confirmationId = button.getAttribute("data-confirmation-task") || "";
+    const item = (state.overview?.confirmations || []).find((row) => row.confirmation_id === confirmationId);
+    if (!item) {
+      alert("没有找到对应的确认记录。");
+      return;
+    }
+    createTaskFromConfirmationRecord(confirmationId, todayIsoDate(), item.suggestion?.title || "");
+  });
+}
+
+function bindTaskEvents() {
+  el("save-key")?.addEventListener("click", async () => {
+    state.apiKey = (el("api-key")?.value || "").trim();
+    localStorage.setItem("kb_api_key", state.apiKey);
+    alert("API Key 已保存到本地浏览器。");
+    try {
+      await loadPlatformTasks(true);
+    } catch (error) {
+      alert(`加载任务失败：${error.message}`);
+    }
+  });
+  el("load-tasks")?.addEventListener("click", async () => {
+    await loadPlatformTasks();
+  });
+  el("refresh-tasks")?.addEventListener("click", async () => {
+    await loadPlatformTasks(true);
+  });
+  el("export-task-markdown")?.addEventListener("click", exportTaskListMarkdown);
+  el("save-task-report")?.addEventListener("click", savePlatformTaskReport);
+  el("save-task-history-report")?.addEventListener("click", savePlatformTaskHistoryReport);
+  el("refresh-task-detail")?.addEventListener("click", async () => {
+    if (state.selectedTaskId) {
+      await loadPlatformTaskDetail(state.selectedTaskId);
+    }
+  });
+  el("export-task-detail-markdown")?.addEventListener("click", exportSelectedTaskMarkdown);
+  el("transition-task")?.addEventListener("click", transitionCurrentTask);
+  el("create-task-from-confirmation")?.addEventListener("click", createTaskFromConfirmation);
+  el("fill-confirmation-example")?.addEventListener("click", () => {
+    setInputValue("task-confirmation-id", "ecf_example");
+    setInputValue("task-confirmation-date", todayIsoDate());
+    setInputValue("task-create-owner", "项目负责人");
+    setInputValue("task-create-due-date", todayIsoDate());
+    setInputValue("task-create-note", "由确认记录直接转入任务台账，便于后续跟进。");
+  });
+  el("clear-confirmation-form")?.addEventListener("click", clearPlatformTaskCreateForm);
+  el("task-table")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-task-open]");
+    if (!button) return;
+    const taskId = button.getAttribute("data-task-open") || "";
+    if (taskId) {
+      state.selectedTaskId = taskId;
+      loadPlatformTaskDetail(taskId);
+    }
+  });
+  el("task-confirmations")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-task-confirmation]");
+    if (!button) return;
+    const confirmationId = button.getAttribute("data-task-confirmation") || "";
+    const item = state.taskConfirmations.find((row) => row.confirmation_id === confirmationId);
+    if (!item) {
+      alert("没有找到对应的确认记录。");
+      return;
+    }
+    createTaskFromConfirmationRecord(confirmationId, (el("task-date")?.value || "").trim() || todayIsoDate(), item.suggestion?.title || "");
   });
 }
 
@@ -1110,8 +2157,38 @@ async function bootstrap() {
     return;
   }
 
+  if (PAGE === "overview") {
+    bindOverviewEvents();
+    if (state.apiKey) {
+      await loadPlatformOverview(true);
+    } else {
+      renderOverviewEmpty("输入 API Key 后可查看");
+    }
+    return;
+  }
+
+  if (PAGE === "tasks") {
+    bindTaskEvents();
+    const taskDate = el("task-date");
+    if (taskDate && !taskDate.value) {
+      taskDate.value = todayIsoDate();
+    }
+    if (state.apiKey) {
+      await loadPlatformTasks(true);
+    } else {
+      renderPlatformTaskDetailEmpty("输入 API Key 后可查看");
+      setHtml("task-table", '<tr><td colspan="5" class="placeholder">输入 API Key 后可加载任务</td></tr>');
+    }
+    return;
+  }
+
   bindHomeEvents();
   await loadHealth();
+  if (state.apiKey) {
+    await loadDailyAutomation(true);
+  } else {
+    renderDailyReportAutomationEmpty("输入 API Key 后可查看");
+  }
 }
 
 bootstrap();

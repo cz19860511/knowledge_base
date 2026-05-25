@@ -51,7 +51,7 @@ def main():
     print(body)
 
     payload = {
-        "knowledge_base_ids": ["ai_qna_standard_v1"],
+        "knowledge_base_id": "ai_qna_standard_v1",
         "query": "安全生产责任制的主要要求是什么",
         "method": "doc",
         "offset": 0,
