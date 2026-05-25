@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,6 +12,15 @@ def _now_iso() -> str:
 
 def _default_date() -> str:
     return datetime.now().date().isoformat()
+
+
+def _parse_iso_date(value: str | None) -> datetime.date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -48,12 +57,32 @@ def get_task_history_path(root_dir: Path | str, event_date: str | None = None) -
     return Path(root_dir) / "operations" / "platform_tasks_history" / f"{day}.jsonl"
 
 
+def get_task_log_path(root_dir: Path | str, event_date: str | None = None) -> Path:
+    day = event_date or _default_date()
+    return Path(root_dir) / "operations" / "platform_task_logs" / f"{day}.jsonl"
+
+
 def _append_task_history(root_dir: Path | str, payload: dict, *, event_date: str | None = None) -> None:
     _append_jsonl(get_task_history_path(root_dir, event_date=event_date), payload)
 
 
+def _append_task_log(root_dir: Path | str, payload: dict, *, event_date: str | None = None) -> None:
+    _append_jsonl(get_task_log_path(root_dir, event_date=event_date), payload)
+
+
 def _load_tasks(root_dir: Path | str, event_date: str | None = None) -> list[dict]:
     return _read_jsonl(get_task_ledger_path(root_dir, event_date=event_date))
+
+
+def _load_task_logs(root_dir: Path | str, event_date: str | None = None) -> list[dict]:
+    return _read_jsonl(get_task_log_path(root_dir, event_date=event_date))
+
+
+def _iter_task_ledger_paths(root_dir: Path | str) -> list[Path]:
+    base = Path(root_dir) / "operations" / "platform_tasks"
+    if not base.exists():
+        return []
+    return sorted(path for path in base.glob("*.jsonl") if len(path.stem) == 10)
 
 
 def _allowed_status_transitions(current: str) -> set[str]:
@@ -295,6 +324,68 @@ def transition_platform_task(
     return task
 
 
+def add_platform_task_log(
+    root_dir: Path | str,
+    *,
+    task_id: str,
+    log_type: str = "note",
+    content: str,
+    author: str = "system",
+    event_date: str | None = None,
+) -> dict:
+    items = _load_tasks(root_dir, event_date=event_date)
+    task = _latest_task(items, task_id)
+    if task is None:
+        raise FileNotFoundError(f"task not found: {task_id}")
+    payload = {
+        "log_id": f"ptl_{uuid4().hex}",
+        "task_id": task_id,
+        "log_type": log_type,
+        "content": content,
+        "author": author,
+        "created_at": _now_iso(),
+    }
+    _append_task_log(root_dir, payload, event_date=event_date)
+    _append_task_history(
+        root_dir,
+        {
+            "event_id": f"pte_{uuid4().hex}",
+            "task_id": task_id,
+            "event_type": "log_added",
+            "status": task.get("status", ""),
+            "created_at": _now_iso(),
+            "note": content,
+            "owner": task.get("owner", ""),
+            "due_date": task.get("due_date", ""),
+        },
+        event_date=event_date,
+    )
+    return payload
+
+
+def list_platform_task_logs(
+    root_dir: Path | str,
+    *,
+    event_date: str | None = None,
+    task_id: str | None = None,
+    log_type: str | None = None,
+    limit: int = 500,
+) -> dict:
+    path = get_task_log_path(root_dir, event_date=event_date)
+    items = _read_jsonl(path)
+    if task_id:
+        items = [item for item in items if str(item.get("task_id") or "").strip() == task_id]
+    if log_type:
+        items = [item for item in items if str(item.get("log_type") or "").strip() == log_type]
+    items = items[-limit:] if limit > 0 else items
+    return {
+        "total": len(items),
+        "event_date": event_date or _default_date(),
+        "log_path": str(path),
+        "items": items,
+    }
+
+
 def build_task_report(root_dir: Path | str, *, event_date: str | None = None) -> dict:
     payload = list_platform_tasks(root_dir, event_date=event_date)
     counts: dict[str, int] = {}
@@ -404,6 +495,222 @@ def write_task_history_report(root_dir: Path | str, *, event_date: str | None = 
                 f"task=`{item.get('task_id', '')}` status=`{item.get('status', '')}` "
                 f"from=`{item.get('from_status', '') or '-'}` to=`{item.get('to_status', '') or '-'}`"
             )
+    else:
+        lines.append("- 无")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def build_task_log_report(root_dir: Path | str, *, event_date: str | None = None, task_id: str | None = None) -> dict:
+    payload = list_platform_task_logs(root_dir, event_date=event_date, task_id=task_id)
+    counts: dict[str, int] = {}
+    for item in payload["items"]:
+        log_type = str(item.get("log_type") or "unknown")
+        counts[log_type] = counts.get(log_type, 0) + 1
+    return {
+        "report_date": payload["event_date"],
+        "generated_at": _now_iso(),
+        "total": payload["total"],
+        "log_path": payload["log_path"],
+        "items": payload["items"],
+        "counts": counts,
+        "task_id": task_id or "",
+    }
+
+
+def write_task_log_report(
+    root_dir: Path | str,
+    *,
+    event_date: str | None = None,
+    task_id: str | None = None,
+    output_path: Path | None = None,
+) -> Path:
+    payload = build_task_log_report(root_dir, event_date=event_date, task_id=task_id)
+    day = payload["report_date"]
+    suffix = f"_{task_id}" if task_id else ""
+    if output_path is None:
+        output_path = Path(root_dir) / "operations" / "platform_task_logs" / f"{day}{suffix}.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        f"# 平台任务执行日志 {day}",
+        "",
+        f"- 生成时间：{payload['generated_at']}",
+        f"- 日志总数：{payload['total']}",
+        f"- 日志路径：{payload['log_path']}",
+        "",
+        "## 类型统计",
+        "",
+    ]
+    if payload["counts"]:
+        for log_type, count in payload["counts"].items():
+            lines.append(f"- {log_type}: {count}")
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 日志明细", ""])
+    if payload["items"]:
+        for item in payload["items"][-120:]:
+            lines.append(
+                f"- [{item.get('created_at', '')}] `{item.get('log_type', '')}` "
+                f"task=`{item.get('task_id', '')}` author=`{item.get('author', '')}`"
+            )
+            lines.append(f"  - 内容：{item.get('content', '')}")
+    else:
+        lines.append("- 无")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def build_task_due_report(
+    root_dir: Path | str,
+    *,
+    event_date: str | None = None,
+    horizon_days: int = 7,
+) -> dict:
+    payload = list_platform_tasks(root_dir, event_date=event_date)
+    report_date = _parse_iso_date(payload["event_date"]) or datetime.now().date()
+    horizon_end = report_date + timedelta(days=max(horizon_days, 0))
+    overdue: list[dict] = []
+    due_soon: list[dict] = []
+    no_due: list[dict] = []
+    for item in payload["items"]:
+        if str(item.get("status") or "").strip() in {"done", "cancelled"}:
+            continue
+        due_date = _parse_iso_date(str(item.get("due_date") or ""))
+        if due_date is None:
+            no_due.append(item)
+            continue
+        if due_date < report_date:
+            overdue.append(item)
+        elif report_date <= due_date <= horizon_end:
+            due_soon.append(item)
+    return {
+        "report_date": payload["event_date"],
+        "generated_at": _now_iso(),
+        "total": payload["total"],
+        "task_path": payload["task_path"],
+        "horizon_days": horizon_days,
+        "overdue": overdue,
+        "due_soon": due_soon,
+        "no_due": no_due,
+    }
+
+
+def write_task_due_report(
+    root_dir: Path | str,
+    *,
+    event_date: str | None = None,
+    horizon_days: int = 7,
+    output_path: Path | None = None,
+) -> Path:
+    payload = build_task_due_report(root_dir, event_date=event_date, horizon_days=horizon_days)
+    day = payload["report_date"]
+    if output_path is None:
+        output_path = Path(root_dir) / "operations" / "platform_task_due" / f"{day}.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        f"# 平台任务到期提醒 {day}",
+        "",
+        f"- 生成时间：{payload['generated_at']}",
+        f"- 检查窗口：未来 {payload['horizon_days']} 天",
+        f"- 任务路径：{payload['task_path']}",
+        "",
+        "## 统计",
+        "",
+        f"- 逾期：{len(payload['overdue'])}",
+        f"- 即将到期：{len(payload['due_soon'])}",
+        f"- 未设置截止日期：{len(payload['no_due'])}",
+        "",
+        "## 逾期任务",
+        "",
+    ]
+    if payload["overdue"]:
+        for item in payload["overdue"]:
+            lines.append(
+                f"- [{item.get('status', '')}] `{item.get('title', '')}` due=`{item.get('due_date', '')}` owner=`{item.get('owner', '') or '-'}`"
+            )
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 即将到期任务", ""])
+    if payload["due_soon"]:
+        for item in payload["due_soon"]:
+            lines.append(
+                f"- [{item.get('status', '')}] `{item.get('title', '')}` due=`{item.get('due_date', '')}` owner=`{item.get('owner', '') or '-'}`"
+            )
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 未设置截止日期", ""])
+    if payload["no_due"]:
+        for item in payload["no_due"]:
+            lines.append(f"- [{item.get('status', '')}] `{item.get('title', '')}` owner=`{item.get('owner', '') or '-'}`")
+    else:
+        lines.append("- 无")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def build_task_weekly_report(root_dir: Path | str, *, event_date: str | None = None, days: int = 7) -> dict:
+    end_date = _parse_iso_date(event_date) or datetime.now().date()
+    start_date = end_date - timedelta(days=max(days, 1) - 1)
+    items_by_day: dict[str, list[dict]] = {}
+    total = 0
+    status_counts: dict[str, int] = {}
+    for path in _iter_task_ledger_paths(root_dir):
+        day = path.stem
+        day_date = _parse_iso_date(day)
+        if day_date is None or not (start_date <= day_date <= end_date):
+            continue
+        items = _read_jsonl(path)
+        items_by_day[day] = items
+        total += len(items)
+        for item in items:
+            status = str(item.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "report_date": end_date.isoformat(),
+        "generated_at": _now_iso(),
+        "days": days,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "total": total,
+        "status_counts": status_counts,
+        "items_by_day": items_by_day,
+    }
+
+
+def write_task_weekly_report(
+    root_dir: Path | str,
+    *,
+    event_date: str | None = None,
+    days: int = 7,
+    output_path: Path | None = None,
+) -> Path:
+    payload = build_task_weekly_report(root_dir, event_date=event_date, days=days)
+    day = payload["report_date"]
+    if output_path is None:
+        output_path = Path(root_dir) / "operations" / "platform_tasks_weekly" / f"{day}.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        f"# 平台任务周报 {day}",
+        "",
+        f"- 生成时间：{payload['generated_at']}",
+        f"- 时间窗口：{payload['start_date']} ~ {payload['end_date']}",
+        f"- 任务总数：{payload['total']}",
+        "",
+        "## 状态统计",
+        "",
+    ]
+    if payload["status_counts"]:
+        for status, count in payload["status_counts"].items():
+            lines.append(f"- {status}: {count}")
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 按天汇总", ""])
+    if payload["items_by_day"]:
+        for day_key, items in sorted(payload["items_by_day"].items()):
+            lines.append(f"- `{day_key}`：{len(items)}")
     else:
         lines.append("- 无")
     output_path.write_text("\n".join(lines), encoding="utf-8")

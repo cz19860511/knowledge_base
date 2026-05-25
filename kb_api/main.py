@@ -10,11 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .daily_report import build_daily_report, write_daily_report
 from .daily_memory import ingest_daily_report_to_memory
+from .platform_task_scheduler import ensure_platform_task_report_scheduler_started, load_platform_task_report_automation_status, run_platform_task_report_automation
 from .asset_manifest import list_asset_versions
 from .evolution import build_evolution_suggestions, get_evolution_templates, write_evolution_report
 from .evolution_confirmation import list_evolution_confirmations, record_evolution_confirmation, write_evolution_confirmation_report
 from .replay import build_replay_report, write_replay_report
-from .platform_tasks import build_task_history_report, build_task_report, create_platform_task, create_platform_task_from_confirmation, list_platform_tasks, update_platform_task, write_task_history_report, write_task_report
+from .platform_tasks import add_platform_task_log, build_task_due_report, build_task_history_report, build_task_log_report, build_task_report, build_task_weekly_report, create_platform_task, create_platform_task_from_confirmation, list_platform_tasks, list_platform_task_logs, update_platform_task, write_task_due_report, write_task_history_report, write_task_log_report, write_task_report, write_task_weekly_report
 from .platform_tasks import get_platform_task, get_task_history_path, transition_platform_task
 from .version_reconciliation import build_version_reconciliation, write_version_reconciliation
 from .daily_report_scheduler import ensure_daily_report_scheduler_started, load_daily_report_automation_status, run_daily_report_automation
@@ -30,6 +31,8 @@ from .schemas import (
     DailyReportIngestResponse,
     DailyReportAutomationStatusResponse,
     DailyReportAutomationRunResponse,
+    PlatformTaskAutomationStatusResponse,
+    PlatformTaskAutomationRunResponse,
     EvolutionSuggestionResponse,
     EvolutionTemplatesResponse,
     EvolutionReportResponse,
@@ -44,6 +47,12 @@ from .schemas import (
     PlatformTaskHistoryReportResponse,
     PlatformTaskListResponse,
     PlatformTaskReportResponse,
+    PlatformTaskDueReportResponse,
+    PlatformTaskLog,
+    PlatformTaskLogCreateRequest,
+    PlatformTaskLogListResponse,
+    PlatformTaskLogReportResponse,
+    PlatformTaskWeeklyReportResponse,
     PlatformTaskUpdateRequest,
     PlatformTaskTransitionRequest,
     AssetManifestResponse,
@@ -100,6 +109,7 @@ def health() -> dict:
 @app.on_event("startup")
 def startup() -> None:
     ensure_daily_report_scheduler_started(settings.root_dir)
+    ensure_platform_task_report_scheduler_started(settings.root_dir)
 
 
 @app.get("/", include_in_schema=False)
@@ -659,6 +669,115 @@ def platform_task_history_report(
     )
 
 
+@app.get("/operations/platform-task-logs", response_model=PlatformTaskLogListResponse, dependencies=[Depends(require_api_key)])
+def platform_task_logs(
+    date: str | None = Query(default=None),
+    task_id: str | None = Query(default=None),
+    log_type: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> PlatformTaskLogListResponse:
+    payload = list_platform_task_logs(settings.root_dir, event_date=date, task_id=task_id, log_type=log_type, limit=limit)
+    return PlatformTaskLogListResponse(**payload)
+
+
+@app.post("/operations/platform-tasks/{task_id}/logs", response_model=PlatformTaskLog, dependencies=[Depends(require_api_key)])
+def create_platform_task_log(task_id: str, req: PlatformTaskLogCreateRequest, date: str | None = Query(default=None)) -> PlatformTaskLog:
+    payload = add_platform_task_log(
+        settings.root_dir,
+        task_id=task_id,
+        log_type=req.log_type,
+        content=req.content,
+        author=req.author,
+        event_date=date,
+    )
+    return PlatformTaskLog(**payload)
+
+
+@app.get("/operations/platform-task-log-report", response_model=PlatformTaskLogReportResponse, dependencies=[Depends(require_api_key)])
+def platform_task_log_report(
+    date: str | None = Query(default=None),
+    task_id: str | None = Query(default=None),
+    save: bool = Query(default=True),
+) -> PlatformTaskLogReportResponse:
+    payload = build_task_log_report(settings.root_dir, event_date=date, task_id=task_id)
+    report_path = ""
+    if save:
+        report_path = str(write_task_log_report(settings.root_dir, event_date=payload["report_date"], task_id=task_id))
+    content = "\n".join(
+        [
+            f"日志总数：{payload['total']}",
+            f"日志路径：{payload['log_path']}",
+        ]
+    )
+    return PlatformTaskLogReportResponse(
+        report_path=report_path,
+        event_date=payload["report_date"],
+        total=payload["total"],
+        content=content,
+    )
+
+
+@app.get("/operations/platform-task-due-report", response_model=PlatformTaskDueReportResponse, dependencies=[Depends(require_api_key)])
+def platform_task_due_report(
+    date: str | None = Query(default=None),
+    horizon_days: int = Query(default=7, ge=0, le=30),
+    save: bool = Query(default=True),
+) -> PlatformTaskDueReportResponse:
+    payload = build_task_due_report(settings.root_dir, event_date=date, horizon_days=horizon_days)
+    report_path = ""
+    if save:
+        report_path = str(write_task_due_report(settings.root_dir, event_date=payload["report_date"], horizon_days=horizon_days))
+    content = "\n".join(
+        [
+            f"逾期：{len(payload['overdue'])}",
+            f"即将到期：{len(payload['due_soon'])}",
+            f"未设截止：{len(payload['no_due'])}",
+        ]
+    )
+    return PlatformTaskDueReportResponse(
+        report_path=report_path,
+        event_date=payload["report_date"],
+        report_date=payload["report_date"],
+        total=payload["total"],
+        content=content,
+        horizon_days=payload["horizon_days"],
+        task_path=payload["task_path"],
+        overdue=payload["overdue"],
+        due_soon=payload["due_soon"],
+        no_due=payload["no_due"],
+    )
+
+
+@app.get("/operations/platform-task-weekly-report", response_model=PlatformTaskWeeklyReportResponse, dependencies=[Depends(require_api_key)])
+def platform_task_weekly_report(
+    date: str | None = Query(default=None),
+    days: int = Query(default=7, ge=1, le=30),
+    save: bool = Query(default=True),
+) -> PlatformTaskWeeklyReportResponse:
+    payload = build_task_weekly_report(settings.root_dir, event_date=date, days=days)
+    report_path = ""
+    if save:
+        report_path = str(write_task_weekly_report(settings.root_dir, event_date=payload["report_date"], days=days))
+    content = "\n".join(
+        [
+            f"时间窗口：{payload['start_date']} ~ {payload['end_date']}",
+            f"任务总数：{payload['total']}",
+        ]
+    )
+    return PlatformTaskWeeklyReportResponse(
+        report_path=report_path,
+        event_date=payload["report_date"],
+        report_date=payload["report_date"],
+        total=payload["total"],
+        content=content,
+        days=payload["days"],
+        start_date=payload["start_date"],
+        end_date=payload["end_date"],
+        status_counts=payload["status_counts"],
+        items_by_day=payload["items_by_day"],
+    )
+
+
 @app.get("/operations/platform-task-history-report", response_model=PlatformTaskHistoryReportResponse, dependencies=[Depends(require_api_key)])
 def platform_task_history_report(
     date: str | None = Query(default=None),
@@ -771,6 +890,18 @@ def daily_report_automation_status() -> DailyReportAutomationStatusResponse:
 def daily_report_automation_run(date: str | None = Query(default=None)) -> DailyReportAutomationRunResponse:
     payload = run_daily_report_automation(settings.root_dir, report_date=date, force=bool(date))
     return DailyReportAutomationRunResponse(**payload)
+
+
+@app.get("/operations/platform-task-report/automation", response_model=PlatformTaskAutomationStatusResponse, dependencies=[Depends(require_api_key)])
+def platform_task_report_automation_status() -> PlatformTaskAutomationStatusResponse:
+    payload = load_platform_task_report_automation_status(settings.root_dir)
+    return PlatformTaskAutomationStatusResponse(**payload)
+
+
+@app.post("/operations/platform-task-report/automation/run", response_model=PlatformTaskAutomationRunResponse, dependencies=[Depends(require_api_key)])
+def platform_task_report_automation_run(date: str | None = Query(default=None)) -> PlatformTaskAutomationRunResponse:
+    payload = run_platform_task_report_automation(settings.root_dir, report_date=date, force=bool(date))
+    return PlatformTaskAutomationRunResponse(**payload)
 
 
 @app.post("/raw-files/pipeline", response_model=RawPipelineResponse, dependencies=[Depends(require_api_key)])

@@ -15,6 +15,10 @@ const state = {
   selectedTaskId: "",
   taskConfirmations: [],
   taskDetail: null,
+  taskLogs: [],
+  taskDueReport: null,
+  taskWeeklyReport: null,
+  taskAutomation: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -423,6 +427,8 @@ function renderOverviewEmpty(message) {
   setText("overview-replay-summary", "-");
   setText("overview-automation-path", "-");
   setText("overview-automation-summary", "-");
+  setText("overview-task-automation-path", "-");
+  setText("overview-task-automation-summary", "-");
   setText("overview-status-pill", message || "未加载");
   setHtml("overview-timeline", '<div class="placeholder">先加载总览，再查看时间线。</div>');
   setHtml("overview-suggestions", '<div class="placeholder">-</div>');
@@ -506,6 +512,8 @@ function renderPlatformOverview(payload) {
   setText("overview-replay-summary", payload?.replay_summary || "-");
   setText("overview-automation-path", payload?.daily_automation_path || "-");
   setText("overview-automation-summary", payload?.daily_automation_summary || "-");
+  setText("overview-task-automation-path", payload?.task_automation_path || "-");
+  setText("overview-task-automation-summary", payload?.task_automation_summary || "-");
   setText("overview-status-pill", payload?.status || "ok");
 
   const timelineNode = el("overview-timeline");
@@ -582,6 +590,7 @@ function renderTaskHistoryEntry(item) {
 
 function renderPlatformTaskDetailEmpty(message) {
   state.taskDetail = null;
+  state.taskLogs = [];
   setText("task-detail-title", message || "-");
   setText("task-detail-meta", "-");
   setText("task-detail-summary", "-");
@@ -598,6 +607,11 @@ function renderPlatformTaskDetailEmpty(message) {
   setText("task-blocked-total", "-");
   setText("task-done-total", "-");
   setText("task-report-path", "-");
+  setText("task-log-type", "note");
+  setInputValue("task-log-author", "");
+  setInputValue("task-log-content", "");
+  setText("task-log-note", message || "先选择一条任务");
+  setHtml("task-logs", '<div class="placeholder">-</div>');
 }
 
 function clearPlatformTaskCreateForm() {
@@ -766,6 +780,145 @@ function renderPlatformTaskConfirmations(payload) {
       `;
     })
     .join("");
+}
+
+function renderPlatformTaskLogs(payload) {
+  state.taskLogs = payload?.items || [];
+  const note = el("task-log-note");
+  if (note) {
+    note.textContent = payload?.event_date ? `日志日期：${payload.event_date}` : "执行日志已加载";
+  }
+
+  const container = el("task-logs");
+  if (!container) return;
+
+  if (!state.taskLogs.length) {
+    container.innerHTML = '<div class="placeholder">当前没有执行日志</div>';
+    return;
+  }
+
+  container.innerHTML = state.taskLogs
+    .map((item) => {
+      return `
+        <article class="overview-item">
+          <div class="overview-item-head">
+            <strong>${escapeHtml(item.log_type || "-")}</strong>
+            <span class="score-badge">${escapeHtml(formatTime(item.created_at || ""))}</span>
+          </div>
+          <div class="chips">
+            <span class="chip">${escapeHtml(item.log_id || "-")}</span>
+            <span class="chip">${escapeHtml(item.author || "-")}</span>
+          </div>
+          <div class="snippet">${escapeHtml(item.content || "-")}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderPlatformTaskLogsEmpty(message) {
+  state.taskLogs = [];
+  const note = el("task-log-note");
+  if (note) {
+    note.textContent = message || "执行日志未加载";
+  }
+  setHtml("task-logs", `<div class="placeholder">${escapeHtml(message || "-")}</div>`);
+}
+
+function renderTaskReminderList(selector, items) {
+  const container = el(selector);
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML = '<div class="placeholder">无</div>';
+    return;
+  }
+  container.innerHTML = items
+    .slice(0, 8)
+    .map((item) => {
+      const chips = [
+        item.status || "-",
+        item.owner || "-",
+        item.due_date || "-",
+      ]
+        .map((value) => `<span class="chip">${escapeHtml(String(value))}</span>`)
+        .join("");
+      return `
+        <article class="overview-item">
+          <div class="overview-item-head">
+            <strong>${escapeHtml(item.title || "-")}</strong>
+            <span class="score-badge">${escapeHtml(item.priority != null ? `P${item.priority}` : "-")}</span>
+          </div>
+          <div class="chips">${chips}</div>
+          <div class="snippet">${escapeHtml(item.summary || item.note || "-")}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderTaskDueReport(payload) {
+  state.taskDueReport = payload || null;
+  setText("task-due-pill", payload?.event_date ? `提醒 ${payload.event_date}` : "未加载");
+  setText("task-overdue-total", String((payload?.overdue || []).length ?? "-"));
+  setText("task-due-soon-total", String((payload?.due_soon || []).length ?? "-"));
+  setText("task-no-due-total", String((payload?.no_due || []).length ?? "-"));
+  setText("task-due-report-path", payload?.report_path || "-");
+  renderTaskReminderList("task-overdue-list", payload?.overdue || []);
+  renderTaskReminderList("task-due-soon-list", payload?.due_soon || []);
+}
+
+function renderTaskDueReportEmpty(message) {
+  state.taskDueReport = null;
+  setText("task-due-pill", message || "未加载");
+  setText("task-overdue-total", "-");
+  setText("task-due-soon-total", "-");
+  setText("task-no-due-total", "-");
+  setText("task-due-report-path", "-");
+  setHtml("task-overdue-list", `<div class="placeholder">${escapeHtml(message || "-")}</div>`);
+  setHtml("task-due-soon-list", `<div class="placeholder">${escapeHtml(message || "-")}</div>`);
+}
+
+function renderTaskWeeklyReport(payload) {
+  state.taskWeeklyReport = payload || null;
+  setText("task-weekly-report-status", payload?.event_date ? `周报 ${payload.event_date}` : "未加载");
+  setText("task-weekly-report-path", payload?.report_path || "-");
+}
+
+function renderTaskWeeklyReportEmpty(message) {
+  state.taskWeeklyReport = null;
+  setText("task-weekly-report-status", message || "未加载");
+  setText("task-weekly-report-path", "-");
+}
+
+function renderTaskAutomation(payload) {
+  state.taskAutomation = payload || null;
+  const pill = el("task-automation-pill");
+  if (pill) {
+    pill.textContent = payload?.running ? "运行中" : payload?.thread_started ? "已启动" : "未启动";
+    pill.classList.remove("ok", "warn");
+    pill.classList.add(payload?.last_error ? "warn" : "ok");
+  }
+  setText("task-automation-run-time", payload?.scheduled_time || "-");
+  setText("task-automation-last-success", payload?.last_success_date || "-");
+  setText("task-automation-next", payload?.next_planned_date || (payload?.pending_dates?.[0] || "-"));
+  setText("task-automation-error", payload?.last_error || "-");
+  setText("task-automation-due-path", payload?.last_due_report_path || "-");
+  setText("task-automation-weekly-path", payload?.last_weekly_report_path || "-");
+}
+
+function renderTaskAutomationEmpty(message) {
+  state.taskAutomation = null;
+  const pill = el("task-automation-pill");
+  if (pill) {
+    pill.textContent = message || "未加载";
+    pill.classList.remove("ok", "warn");
+  }
+  setText("task-automation-run-time", "-");
+  setText("task-automation-last-success", "-");
+  setText("task-automation-next", "-");
+  setText("task-automation-error", message || "-");
+  setText("task-automation-due-path", "-");
+  setText("task-automation-weekly-path", "-");
 }
 
 function buildTaskListMarkdown() {
@@ -1266,6 +1419,7 @@ async function loadPlatformOverview(silent = false) {
       registry,
       knowledgeBases,
       automation,
+      taskAutomation,
       events,
       dailyReport,
       reconciliation,
@@ -1279,6 +1433,7 @@ async function loadPlatformOverview(silent = false) {
       fetchJson("/knowledge-base-registry", { headers }),
       fetchJson("/knowledge-bases", { headers }),
       fetchJson("/operations/daily-report/automation", { headers }),
+      fetchJson("/operations/platform-task-report/automation", { headers }),
       fetchJson(`/operations/events?date=${encodeURIComponent(today)}&limit=100`, { headers }),
       fetchJson(`/operations/daily-report?date=${encodeURIComponent(today)}&save=false`, { headers }),
       fetchJson(`/operations/version-reconciliation?date=${encodeURIComponent(today)}&save=false`, { headers }),
@@ -1310,6 +1465,8 @@ async function loadPlatformOverview(silent = false) {
       replay_summary: truncateText(replay.content || "回放结果为空。", 360),
       daily_automation_path: automation.running ? "运行中" : automation.thread_started ? "已启动" : "未启动",
       daily_automation_summary: automation.last_error ? `自动调度异常：${automation.last_error}` : `计划时间 ${automation.scheduled_time || "-"}`,
+      task_automation_path: taskAutomation.running ? "运行中" : taskAutomation.thread_started ? "已启动" : "未启动",
+      task_automation_summary: taskAutomation.last_error ? `自动汇总异常：${taskAutomation.last_error}` : `计划时间 ${taskAutomation.scheduled_time || "-"}`,
       timeline: (events.items || []).slice().sort((a, b) => String(a.started_at || "").localeCompare(String(b.started_at || ""))),
       suggestions: (suggestions.suggestions || []).slice(0, 5),
       confirmations: (confirmations.items || []).slice(0, 5),
@@ -1348,6 +1505,7 @@ async function loadPlatformTaskDetail(taskId, silent = false) {
     });
     renderPlatformTaskDetail(payload);
     renderPlatformTaskList(state.tasksPage?.list || { items: [], total: 0 }, state.tasksPage?.report || null);
+    await loadPlatformTaskLogs(taskId, true);
   } catch (error) {
     if (!silent) {
       alert(`加载任务详情失败：${error.message}`);
@@ -1368,6 +1526,9 @@ async function loadPlatformTasks(silent = false) {
     pill.classList.remove("ok", "warn");
     renderPlatformTaskDetailEmpty("输入 API Key 后可查看");
     setHtml("task-table", '<tr><td colspan="5" class="placeholder">输入 API Key 后可加载任务</td></tr>');
+    renderTaskDueReportEmpty("输入 API Key 后可查看");
+    renderTaskWeeklyReportEmpty("输入 API Key 后可查看");
+    renderTaskAutomationEmpty("输入 API Key 后可查看");
     return;
   }
 
@@ -1383,9 +1544,15 @@ async function loadPlatformTasks(silent = false) {
       ),
     ]);
     const confirmations = await fetchJson(`/operations/evolution-confirmations?date=${encodeURIComponent(filters.date)}&limit=200`, { headers });
+    const dueReport = await fetchJson(`/operations/platform-task-due-report?date=${encodeURIComponent(filters.date)}&horizon_days=7&save=false`, { headers });
+    const weeklyReport = await fetchJson(`/operations/platform-task-weekly-report?date=${encodeURIComponent(filters.date)}&days=7&save=false`, { headers });
+    const automation = await fetchJson("/operations/platform-task-report/automation", { headers });
 
     state.tasksPage = { list, report };
     renderPlatformTaskConfirmations(confirmations);
+    renderTaskDueReport(dueReport);
+    renderTaskWeeklyReport(weeklyReport);
+    renderTaskAutomation(automation);
     const nextTaskId =
       state.selectedTaskId && (list.items || []).some((item) => item.task_id === state.selectedTaskId)
         ? state.selectedTaskId
@@ -1393,8 +1560,10 @@ async function loadPlatformTasks(silent = false) {
     renderPlatformTaskList(list, report);
     if (nextTaskId) {
       await loadPlatformTaskDetail(nextTaskId, true);
+      await loadPlatformTaskLogs(nextTaskId, true);
     } else {
       renderPlatformTaskDetailEmpty("当前筛选条件下没有任务");
+      renderPlatformTaskLogsEmpty("当前筛选条件下没有执行日志");
     }
   } catch (error) {
     if (!silent) {
@@ -1404,6 +1573,181 @@ async function loadPlatformTasks(silent = false) {
     pill.classList.remove("ok", "warn");
     pill.classList.add("warn");
     renderPlatformTaskDetailEmpty("加载失败");
+    renderTaskDueReportEmpty("加载失败");
+    renderTaskWeeklyReportEmpty("加载失败");
+    renderTaskAutomationEmpty("加载失败");
+  }
+}
+
+async function loadPlatformTaskLogs(taskId = "", silent = false) {
+  if (!requireApiKey()) return;
+
+  const filters = getTaskPageFilters();
+  const resolvedTaskId = taskId || state.selectedTaskId || "";
+  const url = new URL("/operations/platform-task-logs", window.location.origin);
+  url.searchParams.set("date", filters.date);
+  if (resolvedTaskId) {
+    url.searchParams.set("task_id", resolvedTaskId);
+  }
+  url.searchParams.set("limit", "200");
+
+  try {
+    const payload = await fetchJson(url.pathname + url.search, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderPlatformTaskLogs(payload);
+  } catch (error) {
+    if (!silent) {
+      alert(`加载执行日志失败：${error.message}`);
+    }
+    renderPlatformTaskLogsEmpty("加载失败");
+  }
+}
+
+async function addCurrentTaskLog() {
+  if (!requireApiKey()) return;
+  if (!state.selectedTaskId) {
+    alert("先选择一条任务。");
+    return;
+  }
+
+  const payload = {
+    log_type: (el("task-log-type")?.value || "note").trim(),
+    author: (el("task-log-author")?.value || "").trim() || "system",
+    content: (el("task-log-content")?.value || "").trim(),
+  };
+  if (!payload.content) {
+    alert("请填写日志内容。");
+    return;
+  }
+
+  const button = el("add-task-log");
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = "记录中...";
+  try {
+    await fetchJson(`/operations/platform-tasks/${encodeURIComponent(state.selectedTaskId)}/logs?date=${encodeURIComponent(getTaskPageFilters().date)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+      body: JSON.stringify(payload),
+    });
+    setInputValue("task-log-content", "");
+    await loadPlatformTaskDetail(state.selectedTaskId, true);
+    await loadPlatformTaskLogs(state.selectedTaskId, true);
+    alert("日志已记录。");
+  } catch (error) {
+    alert(`新增日志失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "新增日志";
+  }
+}
+
+async function savePlatformTaskLogReport() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const taskId = state.selectedTaskId || "";
+  const button = el("save-task-log-report");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+  try {
+    const url = new URL("/operations/platform-task-log-report", window.location.origin);
+    url.searchParams.set("date", filters.date);
+    if (taskId) {
+      url.searchParams.set("task_id", taskId);
+    }
+    url.searchParams.set("save", "true");
+    const report = await fetchJson(url.pathname + url.search, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    alert(`任务日志报告已保存：${report.report_path || "-"}`);
+  } catch (error) {
+    alert(`保存任务日志报告失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存日志报告";
+  }
+}
+
+async function savePlatformTaskDueReport() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const button = el("save-task-due-report");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+  try {
+    const report = await fetchJson(`/operations/platform-task-due-report?date=${encodeURIComponent(filters.date)}&horizon_days=7&save=true`, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderTaskDueReport({
+      ...state.taskDueReport,
+      report_path: report.report_path,
+      event_date: report.event_date,
+    });
+    alert(`到期提醒已保存：${report.report_path || "-"}`);
+  } catch (error) {
+    alert(`保存到期提醒失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存提醒报告";
+  }
+}
+
+async function savePlatformTaskWeeklyReport() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const button = el("save-task-weekly-report");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "保存中...";
+  try {
+    const report = await fetchJson(`/operations/platform-task-weekly-report?date=${encodeURIComponent(filters.date)}&days=7&save=true`, {
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderTaskWeeklyReport({
+      ...state.taskWeeklyReport,
+      report_path: report.report_path,
+      event_date: report.event_date,
+    });
+    alert(`平台任务周报已保存：${report.report_path || "-"}`);
+  } catch (error) {
+    alert(`保存周报失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存周报";
+  }
+}
+
+async function runPlatformTaskAutomationNow() {
+  if (!requireApiKey()) return;
+  const filters = getTaskPageFilters();
+  const button = el("run-task-automation-now");
+  if (!button) return;
+
+  button.disabled = true;
+  button.textContent = "补跑中...";
+  try {
+    const url = new URL("/operations/platform-task-report/automation/run", window.location.origin);
+    url.searchParams.set("date", filters.date);
+    const data = await fetchJson(url.pathname + url.search, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${state.apiKey}` },
+    });
+    renderTaskAutomation({
+      ...state.taskAutomation,
+      ...data,
+    });
+    alert(`任务自动汇总补跑完成：${data.results?.length || 0} 份。`);
+  } catch (error) {
+    alert(`任务自动汇总补跑失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "立即补跑";
   }
 }
 
@@ -1960,11 +2304,19 @@ function bindTaskEvents() {
   el("export-task-markdown")?.addEventListener("click", exportTaskListMarkdown);
   el("save-task-report")?.addEventListener("click", savePlatformTaskReport);
   el("save-task-history-report")?.addEventListener("click", savePlatformTaskHistoryReport);
+  el("save-task-log-report")?.addEventListener("click", savePlatformTaskLogReport);
+  el("save-task-due-report")?.addEventListener("click", savePlatformTaskDueReport);
+  el("save-task-weekly-report")?.addEventListener("click", savePlatformTaskWeeklyReport);
+  el("run-task-automation-now")?.addEventListener("click", runPlatformTaskAutomationNow);
   el("refresh-task-detail")?.addEventListener("click", async () => {
     if (state.selectedTaskId) {
       await loadPlatformTaskDetail(state.selectedTaskId);
     }
   });
+  el("refresh-task-logs")?.addEventListener("click", async () => {
+    await loadPlatformTaskLogs(state.selectedTaskId, true);
+  });
+  el("add-task-log")?.addEventListener("click", addCurrentTaskLog);
   el("export-task-detail-markdown")?.addEventListener("click", exportSelectedTaskMarkdown);
   el("transition-task")?.addEventListener("click", transitionCurrentTask);
   el("create-task-from-confirmation")?.addEventListener("click", createTaskFromConfirmation);

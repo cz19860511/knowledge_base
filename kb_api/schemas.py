@@ -252,6 +252,38 @@ class DailyReportAutomationRunResponse(BaseModel):
     last_checked_at: str = ""
 
 
+class PlatformTaskAutomationStatusResponse(BaseModel):
+    running: bool = False
+    thread_started: bool = False
+    scheduled_time: str = "00:20"
+    check_interval_seconds: int = 60
+    timezone: str = "Asia/Shanghai"
+    last_checked_at: str = ""
+    last_attempted_date: str = ""
+    last_success_date: str = ""
+    last_success_at: str = ""
+    last_error: str = ""
+    last_run_started_at: str = ""
+    last_run_finished_at: str = ""
+    pending_dates: list[str] = Field(default_factory=list)
+    next_planned_date: str = ""
+    last_due_report_path: str = ""
+    last_weekly_report_path: str = ""
+
+
+class PlatformTaskAutomationRunResponse(BaseModel):
+    running: bool = False
+    scheduled_time: str = "00:20"
+    pending_dates: list[str] = Field(default_factory=list)
+    results: list[dict] = Field(default_factory=list)
+    last_success_date: str = ""
+    last_success_at: str = ""
+    last_error: str = ""
+    last_checked_at: str = ""
+    last_due_report_path: str = ""
+    last_weekly_report_path: str = ""
+
+
 class EvolutionSuggestion(BaseModel):
     suggestion_id: str
     category: str
@@ -430,6 +462,61 @@ class PlatformTaskHistoryReportResponse(BaseModel):
     event_date: str = ""
     total: int = 0
     content: str = ""
+
+
+class PlatformTaskLog(BaseModel):
+    log_id: str = ""
+    task_id: str = ""
+    log_type: str = "note"
+    content: str = ""
+    author: str = "system"
+    created_at: str = ""
+
+
+class PlatformTaskLogCreateRequest(BaseModel):
+    log_type: str = "note"
+    content: str
+    author: str = "system"
+
+
+class PlatformTaskLogListResponse(BaseModel):
+    total: int = 0
+    event_date: str = ""
+    log_path: str = ""
+    items: list[PlatformTaskLog] = Field(default_factory=list)
+
+
+class PlatformTaskLogReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+
+
+class PlatformTaskDueReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+    report_date: str = ""
+    horizon_days: int = 7
+    task_path: str = ""
+    overdue: list[PlatformTask] = Field(default_factory=list)
+    due_soon: list[PlatformTask] = Field(default_factory=list)
+    no_due: list[PlatformTask] = Field(default_factory=list)
+
+
+class PlatformTaskWeeklyReportResponse(BaseModel):
+    report_path: str = ""
+    event_date: str = ""
+    total: int = 0
+    content: str = ""
+    report_date: str = ""
+    days: int = 7
+    start_date: str = ""
+    end_date: str = ""
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    items_by_day: dict[str, list[PlatformTask]] = Field(default_factory=dict)
 
 
 class AssetRecord(BaseModel):

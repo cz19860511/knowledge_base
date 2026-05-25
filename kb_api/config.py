@@ -28,6 +28,8 @@ class Settings:
     embedding_service_timeout: int = int(os.getenv("KB_EMBEDDING_SERVICE_TIMEOUT", "30"))
     daily_report_run_time: str = os.getenv("KB_DAILY_REPORT_RUN_TIME", "00:10")
     daily_report_check_interval_seconds: int = int(os.getenv("KB_DAILY_REPORT_CHECK_INTERVAL_SECONDS", "60"))
+    platform_task_report_run_time: str = os.getenv("KB_PLATFORM_TASK_REPORT_RUN_TIME", "00:20")
+    platform_task_report_check_interval_seconds: int = int(os.getenv("KB_PLATFORM_TASK_REPORT_CHECK_INTERVAL_SECONDS", "60"))
 
     @property
     def chunks_jsonl(self) -> Path:

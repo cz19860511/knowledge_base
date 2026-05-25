@@ -120,6 +120,90 @@
         <section class="panel">
           <div class="panel-head">
             <div>
+              <h2>到期提醒与周报</h2>
+              <p>自动检查当前任务的逾期和近期待办，并可生成周报汇总。</p>
+            </div>
+            <div class="panel-head-actions">
+              <span class="status-pill" id="task-automation-pill">未加载</span>
+              <button class="ghost-btn" id="run-task-automation-now">立即补跑</button>
+              <span class="status-pill" id="task-due-pill">未加载</span>
+              <button class="ghost-btn" id="save-task-due-report">保存提醒报告</button>
+              <button class="ghost-btn" id="save-task-weekly-report">保存周报</button>
+            </div>
+          </div>
+          <div class="status-grid task-kpi-grid">
+            <div class="metric">
+              <span class="metric-label">逾期</span>
+              <strong id="task-overdue-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">即将到期</span>
+              <strong id="task-due-soon-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">未设截止</span>
+              <strong id="task-no-due-total">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">提醒报告路径</span>
+              <strong id="task-due-report-path">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">周报路径</span>
+              <strong id="task-weekly-report-path">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">周报状态</span>
+              <strong id="task-weekly-report-status">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动汇总计划</span>
+              <strong id="task-automation-run-time">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动汇总最近成功</span>
+              <strong id="task-automation-last-success">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动汇总下一次</span>
+              <strong id="task-automation-next">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动汇总错误</span>
+              <strong id="task-automation-error">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动提醒路径</span>
+              <strong id="task-automation-due-path">-</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">自动周报路径</span>
+              <strong id="task-automation-weekly-path">-</strong>
+            </div>
+          </div>
+          <div class="overview-grid task-reminder-grid">
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>逾期任务</strong>
+              </div>
+              <div id="task-overdue-list" class="overview-list">
+                <div class="placeholder">-</div>
+              </div>
+            </article>
+            <article class="overview-card">
+              <div class="overview-card-head">
+                <strong>即将到期</strong>
+              </div>
+              <div id="task-due-soon-list" class="overview-list">
+                <div class="placeholder">-</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
               <h2>从确认生成任务</h2>
               <p>把自进化建议确认记录直接转成平台任务，减少手工录入。</p>
             </div>
@@ -249,6 +333,38 @@
                   <button class="ghost-btn" id="save-task-history-report">保存历史报告</button>
                 </div>
                 <div id="task-history" class="overview-list">
+                  <div class="placeholder">-</div>
+                </div>
+              </div>
+
+              <div class="meta-block">
+                <span class="metric-label">执行日志</span>
+                <div class="mini-note" id="task-log-note">-</div>
+                <div class="form-grid task-log-grid">
+                  <label class="field">
+                    <span>日志类型</span>
+                    <select id="task-log-type">
+                      <option value="note">note</option>
+                      <option value="progress">progress</option>
+                      <option value="blocker">blocker</option>
+                      <option value="done">done</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>记录人</span>
+                    <input id="task-log-author" type="text" placeholder="例如：张三" />
+                  </label>
+                  <label class="field field-span-2">
+                    <span>日志内容</span>
+                    <textarea id="task-log-content" placeholder="记录一次处理进展或问题"></textarea>
+                  </label>
+                </div>
+                <div class="actions-row task-export-actions">
+                  <button class="primary-btn" id="add-task-log">新增日志</button>
+                  <button class="ghost-btn" id="refresh-task-logs">刷新日志</button>
+                  <button class="ghost-btn" id="save-task-log-report">保存日志报告</button>
+                </div>
+                <div id="task-logs" class="overview-list">
                   <div class="placeholder">-</div>
                 </div>
               </div>
